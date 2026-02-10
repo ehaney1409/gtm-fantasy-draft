@@ -366,60 +366,62 @@ elif st.session_state.view_mode == 'draft_flow':
                 <strong>Created:</strong> {draft_info['created_at']}
             </div>
         """, unsafe_allow_html=True)
-# Sidebar for navigation and settings
-with st.sidebar:
-    st.markdown("""
-        <div style='text-align: center; padding: 20px 0;'>
-            <h2 style='font-size: 24px; margin: 0;'>⚙️ Draft Control</h2>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    if st.session_state.stage in ['setup', 'cleanup', 'blacklist', 'draft', 'results']:
-        st.markdown(f"""
-            <div class='draft-card'>
-                <p style='color: #48bb78; font-weight: 600; margin: 0;'>✅ CSV Loaded</p>
-                <p style='color: #e2e8f0; font-size: 24px; font-weight: 700; margin: 4px 0;'>{len(st.session_state.accounts_df):,}</p>
-                <p style='color: #a0aec0; font-size: 12px; margin: 0;'>ACCOUNTS</p>
+
+# Sidebar for navigation and settings (only show in draft mode)
+if st.session_state.view_mode == 'draft_flow':
+    with st.sidebar:
+        st.markdown("""
+            <div style='text-align: center; padding: 20px 0;'>
+                <h2 style='font-size: 24px; margin: 0;'>⚙️ Draft Control</h2>
             </div>
         """, unsafe_allow_html=True)
-    
-    if st.session_state.stage in ['blacklist', 'draft', 'results']:
-        st.markdown(f"""
-            <div class='draft-card'>
-                <p style='color: #4299e1; font-weight: 600; margin: 0;'>👥 AEs in Draft</p>
-                <p style='color: #e2e8f0; font-size: 24px; font-weight: 700; margin: 4px 0;'>{len(st.session_state.ae_list)}</p>
-                <p style='color: #a0aec0; font-size: 12px; margin: 0;'>{'SNAKE DRAFT' if st.session_state.get('is_snake', True) else 'LINEAR DRAFT'}</p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("<hr style='border-color: #2d3748; margin: 24px 0;'>", unsafe_allow_html=True)
-    
-    st.markdown("<p style='color: #a0aec0; font-size: 12px; font-weight: 600; letter-spacing: 1px;'>DRAFT PROGRESS</p>", unsafe_allow_html=True)
-    
-    stages = {
-        'upload': ('1', 'Upload CSV'),
-        'setup': ('2', 'Draft Setup'), 
-        'cleanup': ('3', 'Pre-Draft'),
-        'blacklist': ('4', 'Blacklist'),
-        'draft': ('5', 'Live Draft'),
-        'results': ('6', 'Results')
-    }
-    
-    for key, (num, label) in stages.items():
-        if st.session_state.stage == key:
+        
+            if st.session_state.stage in ['setup', 'cleanup', 'blacklist', 'draft', 'results'] and st.session_state.accounts_df is not None:
             st.markdown(f"""
-                <div style='background: #2d3748; padding: 12px; border-radius: 8px; margin: 8px 0; border-left: 4px solid #48bb78;'>
-                    <span style='color: #48bb78; font-weight: 700;'>{num}</span>
-                    <span style='color: #f7fafc; font-weight: 600; margin-left: 12px;'>{label}</span>
+                <div class='draft-card'>
+                    <p style='color: #48bb78; font-weight: 600; margin: 0;'>✅ CSV Loaded</p>
+                    <p style='color: #e2e8f0; font-size: 24px; font-weight: 700; margin: 4px 0;'>{len(st.session_state.accounts_df):,}</p>
+                    <p style='color: #a0aec0; font-size: 12px; margin: 0;'>ACCOUNTS</p>
                 </div>
             """, unsafe_allow_html=True)
-        else:
+    
+        if st.session_state.stage in ['blacklist', 'draft', 'results'] and st.session_state.ae_list:
             st.markdown(f"""
-                <div style='padding: 12px; margin: 8px 0;'>
-                    <span style='color: #4a5568; font-weight: 600;'>{num}</span>
-                    <span style='color: #718096; margin-left: 12px;'>{label}</span>
+                <div class='draft-card'>
+                    <p style='color: #4299e1; font-weight: 600; margin: 0;'>👥 AEs in Draft</p>
+                    <p style='color: #e2e8f0; font-size: 24px; font-weight: 700; margin: 4px 0;'>{len(st.session_state.ae_list)}</p>
+                    <p style='color: #a0aec0; font-size: 12px; margin: 0;'>{'SNAKE DRAFT' if st.session_state.get('is_snake', True) else 'LINEAR DRAFT'}</p>
                 </div>
             """, unsafe_allow_html=True)
+    
+        st.markdown("<hr style='border-color: #2d3748; margin: 24px 0;'>", unsafe_allow_html=True)
+    
+        st.markdown("<p style='color: #a0aec0; font-size: 12px; font-weight: 600; letter-spacing: 1px;'>DRAFT PROGRESS</p>", unsafe_allow_html=True)
+    
+        stages = {
+            'upload': ('1', 'Upload CSV'),
+            'setup': ('2', 'Draft Setup'), 
+            'cleanup': ('3', 'Pre-Draft'),
+            'blacklist': ('4', 'Blacklist'),
+            'draft': ('5', 'Live Draft'),
+            'results': ('6', 'Results')
+        }
+    
+        for key, (num, label) in stages.items():
+            if st.session_state.stage == key:
+                st.markdown(f"""
+                    <div style='background: #2d3748; padding: 12px; border-radius: 8px; margin: 8px 0; border-left: 4px solid #48bb78;'>
+                        <span style='color: #48bb78; font-weight: 700;'>{num}</span>
+                        <span style='color: #f7fafc; font-weight: 600; margin-left: 12px;'>{label}</span>
+                    </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                    <div style='padding: 12px; margin: 8px 0;'>
+                        <span style='color: #4a5568; font-weight: 600;'>{num}</span>
+                        <span style='color: #718096; margin-left: 12px;'>{label}</span>
+                    </div>
+                """, unsafe_allow_html=True)
 
 
 # Stage 1: CSV Upload
