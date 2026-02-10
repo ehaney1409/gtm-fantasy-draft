@@ -841,47 +841,52 @@ if st.session_state.stage == 'upload':
                 if st.button("✅ Confirm Mapping & Apply Territory Filter", type="primary"):
                     st.session_state.accounts_df = df_mapped
                     sync_to_current_draft()
-                
-                st.markdown("<div class='draft-card' style='background: linear-gradient(135deg, #22543d 0%, #1a2f23 100%); border-color: #48bb78;'>", unsafe_allow_html=True)
-                st.markdown(f"<h3 style='color: #48bb78; margin-top: 0;'>✅ Successfully loaded {len(df_mapped):,} accounts for this territory!</h3>", unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-                
-                # Show preview
-                st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
-                st.markdown("<h3>📊 Data Preview (Filtered for Territory)</h3>", unsafe_allow_html=True)
-                st.dataframe(df_mapped.head(10), use_container_width=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-                
-                # Show summary stats
-                st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Territory Accounts", f"{len(df_mapped):,}")
-                with col2:
-                    st.metric("Unique Owners", df_mapped['Account_Owner_Name'].nunique())
-                with col3:
-                    st.metric("Avg Account Score", f"{df_mapped['Account_Score'].mean():.2f}")
-                st.markdown("</div>", unsafe_allow_html=True)
-                
-                # Breakdown by Account Owner
-                st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
-                st.markdown("<h3>👥 Account Breakdown by Owner</h3>", unsafe_allow_html=True)
-                
-                owner_stats = df_mapped.groupby('Account_Owner_Name').agg({
-                    'Account_ID': 'count',
-                    'Account_Score': ['mean', 'max', 'min', 'sum']
-                }).round(2)
-                
-                owner_stats.columns = ['Account Count', 'Avg Score', 'Max Score', 'Min Score', 'Total Score']
-                owner_stats = owner_stats.sort_values('Avg Score', ascending=False).reset_index()
-                
-                st.dataframe(owner_stats, use_container_width=True, hide_index=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-                
-                if st.button("➡️ Proceed to Draft Setup", type="primary"):
-                    st.session_state.stage = 'setup'
-                    sync_to_current_draft()
                     st.rerun()
+                
+                # Show data preview (only if accounts_df is set)
+                if st.session_state.accounts_df is not None and len(st.session_state.accounts_df) > 0:
+                    preview_df = st.session_state.accounts_df
+                    
+                    st.markdown("<div class='draft-card' style='background: linear-gradient(135deg, #22543d 0%, #1a2f23 100%); border-color: #48bb78;'>", unsafe_allow_html=True)
+                    st.markdown(f"<h3 style='color: #48bb78; margin-top: 0;'>✅ Successfully loaded {len(preview_df):,} accounts for this territory!</h3>", unsafe_allow_html=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    # Show preview
+                    st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
+                    st.markdown("<h3>📊 Data Preview (Filtered for Territory)</h3>", unsafe_allow_html=True)
+                    st.dataframe(preview_df.head(10), use_container_width=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    # Show summary stats
+                    st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Territory Accounts", f"{len(preview_df):,}")
+                    with col2:
+                        st.metric("Unique Owners", preview_df['Account_Owner_Name'].nunique())
+                    with col3:
+                        st.metric("Avg Account Score", f"{preview_df['Account_Score'].mean():.2f}")
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    # Breakdown by Account Owner
+                    st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
+                    st.markdown("<h3>👥 Account Breakdown by Owner</h3>", unsafe_allow_html=True)
+                    
+                    owner_stats = preview_df.groupby('Account_Owner_Name').agg({
+                        'Account_ID': 'count',
+                        'Account_Score': ['mean', 'max', 'min', 'sum']
+                    }).round(2)
+                    
+                    owner_stats.columns = ['Account Count', 'Avg Score', 'Max Score', 'Min Score', 'Total Score']
+                    owner_stats = owner_stats.sort_values('Avg Score', ascending=False).reset_index()
+                    
+                    st.dataframe(owner_stats, use_container_width=True, hide_index=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    if st.button("➡️ Proceed to Draft Setup", type="primary"):
+                        st.session_state.stage = 'setup'
+                        sync_to_current_draft()
+                        st.rerun()
                     
         except Exception as e:
             st.error(f"❌ Error loading file: {str(e)}")
@@ -893,6 +898,15 @@ elif st.session_state.stage == 'setup':
     
     df = st.session_state.accounts_df
     
+    # Safety check
+    if df is None or len(df) == 0:
+        st.error("❌ No account data loaded. Please go back to Upload stage.")
+        if st.button("← Back to Upload"):
+            st.session_state.stage = 'upload'
+            sync_to_current_draft()
+            st.rerun()
+        st.stop()
+    
     col1, col2 = st.columns([1, 1])
     
     with col1:
@@ -900,7 +914,11 @@ elif st.session_state.stage == 'setup':
         st.markdown("<h3 style='margin-top: 0;'>👥 Select AEs</h3>", unsafe_allow_html=True)
         
         # Get unique owners from data
-        unique_owners = sorted(df['Account_Owner_Name'].unique().tolist())
+        if 'Account_Owner_Name' in df.columns:
+            unique_owners = sorted(df['Account_Owner_Name'].unique().tolist())
+        else:
+            st.error("❌ Account_Owner_Name column not found. Please re-upload and map columns correctly.")
+            st.stop()
         
         selected_aes = st.multiselect(
             "Choose AEs for the draft",
