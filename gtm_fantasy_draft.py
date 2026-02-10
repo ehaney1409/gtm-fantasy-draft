@@ -184,7 +184,7 @@ def create_new_draft(segment_name):
     return draft_id
 
 # Sync on every run if we have an active draft
-if st.session_state.view_mode == 'draft_flow':
+if st.session_state.view_mode == 'draft_flow' and st.session_state.current_draft_id:
     sync_from_current_draft()
 
 # =============================================================================
