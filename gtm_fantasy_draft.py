@@ -100,6 +100,8 @@ if 'current_draft_id' not in st.session_state:
     st.session_state.current_draft_id = None
 if 'segments' not in st.session_state:
     st.session_state.segments = []
+if 'ai_recommendations' not in st.session_state:
+    st.session_state.ai_recommendations = None
 
 # Legacy single-draft state (for compatibility with existing code)
 # These will be synced with current_draft from all_drafts
@@ -247,9 +249,9 @@ if st.session_state.view_mode == 'territory_planning':
     # AI TERRITORY PLANNER - FULL WIDTH AT TOP
     st.markdown("<div class='draft-card' style='background: linear-gradient(135deg, #1a2f3a 0%, #1a1f2e 100%); border: 2px solid #4299e1;'>", unsafe_allow_html=True)
     st.markdown("<h3 style='margin-top: 0;'>🤖 AI Territory Planner</h3>", unsafe_allow_html=True)
-    st.markdown("<p style='color: #a0aec0;'>Upload your accounts file and get AI-powered territory recommendations based on account distribution, scores, and regions.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #a0aec0;'>Upload your accounts file and get AI-powered territory recommendations based on your chosen criteria.</p>", unsafe_allow_html=True)
     
-    col_ai1, col_ai2, col_ai3, col_ai4 = st.columns([2, 1, 1, 1])
+    col_ai1, col_ai2, col_ai3, col_ai4, col_ai5 = st.columns([2, 1, 1, 1, 1])
     
     with col_ai1:
         ai_file = st.file_uploader("Upload accounts CSV for analysis", type=['csv'], key="ai_upload")
@@ -259,8 +261,13 @@ if st.session_state.view_mode == 'territory_planning':
         target_accounts_per_rep = st.number_input("Target Accounts/Rep", 5, 100, 15, key="accounts_per_rep",
                                                    help="How many accounts should each rep manage?")
     with col_ai4:
+        tier_criteria = st.selectbox("Tier By", 
+                                      ["Account Score", "Revenue", "Employee Count", "Combined Score"],
+                                      key="tier_criteria",
+                                      help="How to determine Strategic vs Enterprise tiers")
+    with col_ai5:
         st.markdown("<div style='padding-top: 28px;'>", unsafe_allow_html=True)
-        analyze_button = st.button("🔮 Analyze & Recommend", type="primary", use_container_width=True)
+        analyze_button = st.button("🔮 Analyze", type="primary", use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
     
     if ai_file and analyze_button:
@@ -277,7 +284,53 @@ if st.session_state.view_mode == 'territory_planning':
                 industry_col = next((c for c in cols if 'industry' in c.lower()), None)
                 region_col = next((c for c in cols if any(x in c.lower() for x in ['region', 'state', 'country', 'geo', 'billing'])), None)
                 score_col = next((c for c in cols if 'score' in c.lower()), None)
-                revenue_col = next((c for c in cols if any(x in c.lower() for x in ['revenue', 'arr', 'value'])), None)
+                revenue_col = next((c for c in cols if any(x in c.lower() for x in ['revenue', 'arr', 'value', 'acv'])), None)
+                employee_col = next((c for c in cols if any(x in c.lower() for x in ['employee', 'employees', 'emp_count', 'headcount'])), None)
+                
+                # Determine which column to use for tiering based on user selection
+                tier_col = None
+                tier_col_name = ""
+                
+                if tier_criteria == "Account Score" and score_col:
+                    tier_col = score_col
+                    tier_col_name = "Account Score"
+                    df_ai[tier_col] = pd.to_numeric(df_ai[tier_col], errors='coerce')
+                elif tier_criteria == "Revenue" and revenue_col:
+                    tier_col = revenue_col
+                    tier_col_name = "Revenue"
+                    df_ai[tier_col] = pd.to_numeric(df_ai[tier_col], errors='coerce')
+                elif tier_criteria == "Employee Count" and employee_col:
+                    tier_col = employee_col
+                    tier_col_name = "Employee Count"
+                    df_ai[tier_col] = pd.to_numeric(df_ai[tier_col], errors='coerce')
+                elif tier_criteria == "Combined Score":
+                    # Create a combined score from available metrics
+                    df_ai['Combined_Tier_Score'] = 0
+                    factors_used = []
+                    
+                    if score_col:
+                        df_ai[score_col] = pd.to_numeric(df_ai[score_col], errors='coerce')
+                        # Normalize to 0-100
+                        df_ai['norm_score'] = (df_ai[score_col] - df_ai[score_col].min()) / (df_ai[score_col].max() - df_ai[score_col].min()) * 100
+                        df_ai['Combined_Tier_Score'] += df_ai['norm_score'].fillna(0)
+                        factors_used.append("Score")
+                    
+                    if revenue_col:
+                        df_ai[revenue_col] = pd.to_numeric(df_ai[revenue_col], errors='coerce')
+                        df_ai['norm_revenue'] = (df_ai[revenue_col] - df_ai[revenue_col].min()) / (df_ai[revenue_col].max() - df_ai[revenue_col].min()) * 100
+                        df_ai['Combined_Tier_Score'] += df_ai['norm_revenue'].fillna(0)
+                        factors_used.append("Revenue")
+                    
+                    if employee_col:
+                        df_ai[employee_col] = pd.to_numeric(df_ai[employee_col], errors='coerce')
+                        df_ai['norm_employees'] = (df_ai[employee_col] - df_ai[employee_col].min()) / (df_ai[employee_col].max() - df_ai[employee_col].min()) * 100
+                        df_ai['Combined_Tier_Score'] += df_ai['norm_employees'].fillna(0)
+                        factors_used.append("Employees")
+                    
+                    if factors_used:
+                        df_ai['Combined_Tier_Score'] = df_ai['Combined_Tier_Score'] / len(factors_used)
+                        tier_col = 'Combined_Tier_Score'
+                        tier_col_name = f"Combined ({', '.join(factors_used)})"
                 
                 # Generate smart recommendations based on data
                 recommendations = []
@@ -285,11 +338,14 @@ if st.session_state.view_mode == 'territory_planning':
                 # Strategic vs Enterprise split
                 # STRATEGIC = Top tier (largest accounts, smaller books, high-touch)
                 # ENTERPRISE = Mid tier (medium accounts, larger books, scaled approach)
-                if score_col:
-                    df_ai[score_col] = pd.to_numeric(df_ai[score_col], errors='coerce')
-                    high_value_count = (df_ai[score_col] > df_ai[score_col].quantile(0.75)).sum()
-                    mid_value_count = ((df_ai[score_col] >= df_ai[score_col].quantile(0.25)) & 
-                                     (df_ai[score_col] <= df_ai[score_col].quantile(0.75))).sum()
+                if tier_col and tier_col in df_ai.columns:
+                    # Calculate tiers
+                    high_value_count = (df_ai[tier_col] > df_ai[tier_col].quantile(0.75)).sum()
+                    mid_value_count = ((df_ai[tier_col] >= df_ai[tier_col].quantile(0.25)) & 
+                                     (df_ai[tier_col] <= df_ai[tier_col].quantile(0.75))).sum()
+                    
+                    threshold_75 = df_ai[tier_col].quantile(0.75)
+                    threshold_25 = df_ai[tier_col].quantile(0.25)
                     
                     # Strategic (top tier - largest accounts, smaller books)
                     strat_accounts_per_rep = max(5, int(target_accounts_per_rep * 0.7))  # Fewer accounts per rep
@@ -299,7 +355,7 @@ if st.session_state.view_mode == 'territory_planning':
                         'num_aes': strat_aes,
                         'accounts': high_value_count,
                         'accounts_per_rep': strat_accounts_per_rep,
-                        'criteria': 'High account score (top 25%)',
+                        'criteria': f'High {tier_col_name} (top 25%, >{threshold_75:.0f})',
                         'rationale': 'Strategic accounts need high-touch approach with smaller book sizes'
                     })
                     
@@ -311,9 +367,16 @@ if st.session_state.view_mode == 'territory_planning':
                         'num_aes': ent_aes,
                         'accounts': mid_value_count,
                         'accounts_per_rep': ent_accounts_per_rep,
-                        'criteria': 'Mid account score (25th-75th percentile)',
+                        'criteria': f'Mid {tier_col_name} (25th-75th percentile, {threshold_25:.0f}-{threshold_75:.0f})',
                         'rationale': 'Enterprise accounts with scaled sales approach and larger territories'
                     })
+                    
+                    # Store tier column for later filtering
+                    st.session_state.ai_tier_col = tier_col
+                    st.session_state.ai_tier_col_name = tier_col_name
+                else:
+                    st.error(f"❌ Could not find {tier_criteria} column in your data. Please select a different tier criteria or ensure your CSV has the required column.")
+                    st.stop()
                 
                 # Regional splits if we have region data
                 if region_col and len(recommendations) > 0:
@@ -346,14 +409,14 @@ if st.session_state.view_mode == 'territory_planning':
                         regional_recs = []
                         for base_seg in recommendations[:]:
                             for region in major_regions:
-                                if score_col:
+                                if tier_col and tier_col in df_ai.columns:
                                     if base_seg['name'] == 'Strategic':
                                         region_accounts = df_ai[(df_ai['High_Level_Region'] == region) & 
-                                                               (df_ai[score_col] > df_ai[score_col].quantile(0.75))]
+                                                               (df_ai[tier_col] > df_ai[tier_col].quantile(0.75))]
                                     else:  # Enterprise
                                         region_accounts = df_ai[(df_ai['High_Level_Region'] == region) & 
-                                                               (df_ai[score_col] >= df_ai[score_col].quantile(0.25)) &
-                                                               (df_ai[score_col] <= df_ai[score_col].quantile(0.75))]
+                                                               (df_ai[tier_col] >= df_ai[tier_col].quantile(0.25)) &
+                                                               (df_ai[tier_col] <= df_ai[tier_col].quantile(0.75))]
                                 else:
                                     region_accounts = df_ai[df_ai['High_Level_Region'] == region]
                                 
@@ -381,60 +444,73 @@ if st.session_state.view_mode == 'territory_planning':
                         if regional_recs:
                             recommendations = regional_recs
                 
-                # Display recommendations
+                # Save recommendations to session state
+                st.session_state.ai_recommendations = {
+                    'recommendations': recommendations,
+                    'current_aes': current_aes,
+                    'total_recommended_aes': sum(r['num_aes'] for r in recommendations)
+                }
+                
                 st.success("✅ Analysis Complete!")
-                st.markdown("<h4>📋 Recommended Segments:</h4>", unsafe_allow_html=True)
                 
-                total_recommended_aes = sum(r['num_aes'] for r in recommendations)
-                st.metric("Recommended Total AEs", total_recommended_aes, 
-                         delta=f"{total_recommended_aes - current_aes:+d} vs current")
-                
-                # Display each recommendation
-                for i, rec in enumerate(recommendations):
-                    col_rec1, col_rec2 = st.columns([4, 1])
-                    with col_rec1:
-                        st.markdown(f"""
-                            <div class='account-card' style='margin: 12px 0;'>
-                                <h4 style='margin: 0; color: #4299e1;'>{rec['name']}</h4>
-                                <p style='margin: 4px 0;'>
-                                    <strong>AEs:</strong> {rec['num_aes']} | 
-                                    <strong>Accounts:</strong> {rec.get('accounts', 'N/A')} | 
-                                    <strong>Per Rep:</strong> {rec.get('accounts_per_rep', 'N/A')}
-                                </p>
-                                <p style='margin: 4px 0; color: #a0aec0; font-size: 13px;'><strong>Criteria:</strong> {rec['criteria']}</p>
-                                <p style='margin: 4px 0; color: #718096; font-size: 12px;'>{rec['rationale']}</p>
-                            </div>
-                        """, unsafe_allow_html=True)
-                    with col_rec2:
-                        st.markdown("<div style='padding-top: 20px;'>", unsafe_allow_html=True)
-                        if st.button(f"➕ Add", key=f"add_ai_{i}", use_container_width=True):
-                            if not any(s['name'] == rec['name'] for s in st.session_state.segments):
-                                st.session_state.segments.append({
-                                    'name': rec['name'],
-                                    'num_aes': rec['num_aes'],
-                                    'draft_id': None,
-                                    'status': 'Not Started'
-                                })
-                                st.rerun()
-                        st.markdown("</div>", unsafe_allow_html=True)
-                
-                # Add all button
-                if st.button("✨ Add All Recommended Segments", type="primary", use_container_width=True):
-                    added = 0
-                    for rec in recommendations:
-                        if not any(s['name'] == rec['name'] for s in st.session_state.segments):
-                            st.session_state.segments.append({
-                                'name': rec['name'],
-                                'num_aes': rec['num_aes'],
-                                'draft_id': None,
-                                'status': 'Not Started'
-                            })
-                            added += 1
-                    if added > 0:
-                        st.rerun()
-            
             except Exception as e:
                 st.error(f"Error analyzing accounts: {str(e)}")
+    
+    # Display AI recommendations (persists after analyze button click)
+    if st.session_state.ai_recommendations:
+        recs_data = st.session_state.ai_recommendations
+        recommendations = recs_data['recommendations']
+        current_aes = recs_data['current_aes']
+        total_recommended_aes = recs_data['total_recommended_aes']
+        
+        st.markdown("<h4>📋 Recommended Segments:</h4>", unsafe_allow_html=True)
+        
+        st.metric("Recommended Total AEs", total_recommended_aes, 
+                 delta=f"{total_recommended_aes - current_aes:+d} vs current")
+        
+        # Display each recommendation
+        for i, rec in enumerate(recommendations):
+            col_rec1, col_rec2 = st.columns([4, 1])
+            with col_rec1:
+                st.markdown(f"""
+                    <div class='account-card' style='margin: 12px 0;'>
+                        <h4 style='margin: 0; color: #4299e1;'>{rec['name']}</h4>
+                        <p style='margin: 4px 0;'>
+                            <strong>AEs:</strong> {rec['num_aes']} | 
+                            <strong>Accounts:</strong> {rec.get('accounts', 'N/A')} | 
+                            <strong>Per Rep:</strong> {rec.get('accounts_per_rep', 'N/A')}
+                        </p>
+                        <p style='margin: 4px 0; color: #a0aec0; font-size: 13px;'><strong>Criteria:</strong> {rec['criteria']}</p>
+                        <p style='margin: 4px 0; color: #718096; font-size: 12px;'>{rec['rationale']}</p>
+                    </div>
+                """, unsafe_allow_html=True)
+            with col_rec2:
+                st.markdown("<div style='padding-top: 20px;'>", unsafe_allow_html=True)
+                if st.button(f"➕ Add", key=f"add_ai_{i}", use_container_width=True):
+                    if not any(s['name'] == rec['name'] for s in st.session_state.segments):
+                        st.session_state.segments.append({
+                            'name': rec['name'],
+                            'num_aes': rec['num_aes'],
+                            'draft_id': None,
+                            'status': 'Not Started'
+                        })
+                        st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Add all button
+        if st.button("✨ Add All Recommended Segments", type="primary", use_container_width=True):
+            added = 0
+            for rec in recommendations:
+                if not any(s['name'] == rec['name'] for s in st.session_state.segments):
+                    st.session_state.segments.append({
+                        'name': rec['name'],
+                        'num_aes': rec['num_aes'],
+                        'draft_id': None,
+                        'status': 'Not Started'
+                    })
+                    added += 1
+            if added > 0:
+                st.rerun()
     
     st.markdown("</div>", unsafe_allow_html=True)
     
