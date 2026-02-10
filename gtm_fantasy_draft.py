@@ -229,15 +229,113 @@ with nav_col2:
 with nav_col3:
     if st.button("📋 Manage Drafts", use_container_width=True):
         sync_to_current_draft()
-        st.info("Draft management coming soon!")
+        st.session_state.view_mode = 'manage_drafts'
+        st.rerun()
 
 st.markdown("<hr style='border-color: #2d3748; margin: 20px 0;'>", unsafe_allow_html=True)
+
+# =============================================================================
+# MANAGE DRAFTS VIEW
+# =============================================================================
+
+if st.session_state.view_mode == 'manage_drafts':
+    st.markdown("<h2>📋 Manage Drafts</h2>", unsafe_allow_html=True)
+    
+    if not st.session_state.all_drafts:
+        st.markdown("""
+            <div class='draft-card' style='text-align: center; padding: 60px;'>
+                <h3>No drafts yet!</h3>
+                <p style='color: #a0aec0;'>Start by creating segments in Territory Planning</p>
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"<p style='color: #a0aec0; margin-bottom: 20px;'>Managing {len(st.session_state.all_drafts)} draft(s)</p>", unsafe_allow_html=True)
+        
+        for draft_id, draft in st.session_state.all_drafts.items():
+            st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
+            
+            # Header
+            col_h1, col_h2, col_h3 = st.columns([3, 2, 1])
+            with col_h1:
+                st.markdown(f"<h3 style='margin: 0; color: #4299e1;'>{draft['segment_name']}</h3>", unsafe_allow_html=True)
+                st.markdown(f"<p style='color: #a0aec0; margin: 4px 0;'>Created: {draft['created_at']}</p>", unsafe_allow_html=True)
+            with col_h2:
+                stage_emoji = {'upload': '📁', 'setup': '⚙️', 'cleanup': '🧹', 'blacklist': '🚫', 'draft': '🎯', 'results': '📊'}
+                st.markdown(f"<p style='color: #718096;'>Stage: {stage_emoji.get(draft['stage'], '•')} {draft['stage'].title()}</p>", unsafe_allow_html=True)
+            with col_h3:
+                if st.button("Open", key=f"open_draft_{draft_id}", use_container_width=True):
+                    st.session_state.current_draft_id = draft_id
+                    st.session_state.view_mode = 'draft_flow'
+                    sync_from_current_draft()
+                    st.rerun()
+            
+            # Show draft details if data exists
+            if draft['accounts_df'] is not None and draft['ae_list']:
+                st.markdown("<hr style='border-color: #2d3748; margin: 16px 0;'>", unsafe_allow_html=True)
+                
+                # Summary metrics
+                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                with col_m1:
+                    st.metric("Total Accounts", len(draft['accounts_df']))
+                with col_m2:
+                    st.metric("AEs", len(draft['ae_list']))
+                with col_m3:
+                    picks_made = len(draft.get('draft_picks', []))
+                    st.metric("Picks Made", picks_made)
+                with col_m4:
+                    if draft['stage'] == 'results':
+                        st.markdown("<p style='color: #48bb78; font-weight: 600; margin-top: 20px;'>✅ Complete</p>", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"<p style='color: #f6ad55; font-weight: 600; margin-top: 20px;'>⏳ In Progress</p>", unsafe_allow_html=True)
+                
+                # Show AE books if draft has started
+                if draft.get('ae_books') and any(len(book) > 0 for book in draft['ae_books'].values()):
+                    st.markdown("<h4 style='margin-top: 16px;'>📚 AE Territory Assignments</h4>", unsafe_allow_html=True)
+                    
+                    # Create book assignments with naming
+                    ae_list_sorted = sorted(draft['ae_list'])
+                    
+                    for idx, ae in enumerate(ae_list_sorted, 1):
+                        book_ids = draft['ae_books'].get(ae, [])
+                        if book_ids:
+                            # Generate book name
+                            book_name = f"{draft['segment_name']}-Book_{idx}"
+                            
+                            # Get account details
+                            ae_accounts = draft['accounts_df'][draft['accounts_df']['Account_ID'].isin(book_ids)]
+                            
+                            with st.expander(f"📖 {book_name} → **{ae}** ({len(book_ids)} accounts)", expanded=False):
+                                if len(ae_accounts) > 0:
+                                    col_s1, col_s2, col_s3 = st.columns(3)
+                                    with col_s1:
+                                        st.metric("Accounts", len(ae_accounts))
+                                    with col_s2:
+                                        st.metric("Avg Score", f"{ae_accounts['Account_Score'].mean():.1f}")
+                                    with col_s3:
+                                        st.metric("Total Score", f"{ae_accounts['Account_Score'].sum():.0f}")
+                                    
+                                    # Show accounts table
+                                    display_df = ae_accounts[['Account_Name', 'Account_Score']].sort_values('Account_Score', ascending=False)
+                                    st.dataframe(display_df, use_container_width=True, hide_index=True)
+                                    
+                                    # Download button for this AE's book
+                                    csv_data = ae_accounts.to_csv(index=False)
+                                    st.download_button(
+                                        f"📥 Download {book_name}",
+                                        csv_data,
+                                        f"{book_name}.csv",
+                                        "text/csv",
+                                        key=f"download_{draft_id}_{ae}",
+                                        use_container_width=True
+                                    )
+            
+            st.markdown("</div>", unsafe_allow_html=True)
 
 # =============================================================================
 # TERRITORY PLANNING VIEW
 # =============================================================================
 
-if st.session_state.view_mode == 'territory_planning':
+elif st.session_state.view_mode == 'territory_planning':
     st.markdown("<h2>🗺️ Territory Planning</h2>", unsafe_allow_html=True)
     
     st.markdown("""
@@ -1346,6 +1444,7 @@ elif st.session_state.stage == 'draft':
                         ]
                         
                         st.session_state.current_pick += 1
+                        sync_to_current_draft()
                         st.rerun()
                 
                 with col_b:
@@ -1369,6 +1468,7 @@ elif st.session_state.stage == 'draft':
                         ]
                         
                         st.session_state.current_pick += 1
+                        sync_to_current_draft()
                         st.rerun()
                 
                 with col_c:
@@ -1387,6 +1487,7 @@ elif st.session_state.stage == 'draft':
                         )
                         
                         st.session_state.current_pick -= 1
+                        sync_to_current_draft()
                         st.rerun()
                 
                 # Auto-complete rest of draft button
