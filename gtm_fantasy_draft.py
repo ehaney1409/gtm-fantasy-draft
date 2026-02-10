@@ -390,43 +390,10 @@ if st.session_state.view_mode == 'territory_planning':
                     prompt += f"""
 
 **Your Task:**
-Create a territory segmentation strategy with 3-6 segments. For each segment, specify:
-1. Segment name (e.g., "Enterprise-NAMER", "Strategic-EMEA")
-2. Recommended number of AEs
-3. Criteria for accounts in this segment
-4. Rationale
+Create a territory segmentation strategy with 3-6 segments based on the data patterns above.
 
-Respond ONLY with a JSON array like this:
-[
-  {{"name": "Segment Name", "num_aes": 8, "criteria": "Description", "rationale": "Why"}},
-  ...
-]
+Provide smart recommendations considering account distribution, value tiers, and regional splits."""
 
-No markdown, no preamble, just the JSON array."""
-
-                    # Call Claude API
-                    response = fetch("https://api.anthropic.com/v1/messages", {
-                        "method": "POST",
-                        "headers": {
-                            "Content-Type": "application/json",
-                        },
-                        "body": JSON.stringify({
-                            "model": "claude-sonnet-4-20250514",
-                            "max_tokens": 2000,
-                            "messages": [{"role": "user", "content": prompt}]
-                        })
-                    })
-                    
-                    # This won't work in Python - need to use requests
-                    # Let me use a Python approach instead
-                    
-                    import json
-                    
-                    # Simulated AI response for now - in production, call Anthropic API
-                    # You would use: import anthropic; client = anthropic.Anthropic()
-                    
-                    st.info("💡 AI Analysis Complete!")
-                    
                     # Generate smart recommendations based on data
                     recommendations = []
                     
