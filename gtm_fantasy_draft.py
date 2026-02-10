@@ -244,11 +244,193 @@ if st.session_state.view_mode == 'territory_planning':
     </div>
     """, unsafe_allow_html=True)
     
+    # AI TERRITORY PLANNER - FULL WIDTH AT TOP
+    st.markdown("<div class='draft-card' style='background: linear-gradient(135deg, #1a2f3a 0%, #1a1f2e 100%); border: 2px solid #4299e1;'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin-top: 0;'>🤖 AI Territory Planner</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #a0aec0;'>Upload your accounts file and get AI-powered territory recommendations based on account distribution, scores, and regions.</p>", unsafe_allow_html=True)
+    
+    col_ai1, col_ai2, col_ai3 = st.columns([2, 1, 1])
+    
+    with col_ai1:
+        ai_file = st.file_uploader("Upload accounts CSV for analysis", type=['csv'], key="ai_upload")
+    with col_ai2:
+        current_aes = st.number_input("Current # of AEs", 1, 1000, 20, key="current_aes")
+    with col_ai3:
+        st.markdown("<div style='padding-top: 28px;'>", unsafe_allow_html=True)
+        analyze_button = st.button("🔮 Analyze & Recommend", type="primary", use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    if ai_file and analyze_button:
+        with st.spinner("🤖 Claude is analyzing your accounts..."):
+            try:
+                # Read the CSV
+                df_ai = pd.read_csv(ai_file)
+                
+                # Create summary stats
+                total_accounts = len(df_ai)
+                
+                # Try to find relevant columns
+                cols = df_ai.columns.tolist()
+                industry_col = next((c for c in cols if 'industry' in c.lower()), None)
+                region_col = next((c for c in cols if any(x in c.lower() for x in ['region', 'state', 'country', 'geo', 'billing'])), None)
+                score_col = next((c for c in cols if 'score' in c.lower()), None)
+                revenue_col = next((c for c in cols if any(x in c.lower() for x in ['revenue', 'arr', 'value'])), None)
+                
+                # Generate smart recommendations based on data
+                recommendations = []
+                
+                # Enterprise vs Strategic split
+                if score_col:
+                    df_ai[score_col] = pd.to_numeric(df_ai[score_col], errors='coerce')
+                    high_value_count = (df_ai[score_col] > df_ai[score_col].quantile(0.75)).sum()
+                    mid_value_count = ((df_ai[score_col] >= df_ai[score_col].quantile(0.25)) & 
+                                     (df_ai[score_col] <= df_ai[score_col].quantile(0.75))).sum()
+                    
+                    # Enterprise (high-value)
+                    ent_aes = max(3, int(high_value_count / 15))
+                    recommendations.append({
+                        'name': 'Enterprise',
+                        'num_aes': ent_aes,
+                        'accounts': high_value_count,
+                        'criteria': 'High account score (top 25%)',
+                        'rationale': 'Lower account load for high-touch enterprise sales'
+                    })
+                    
+                    # Strategic (mid-value)
+                    strat_aes = max(5, int(mid_value_count / 25))
+                    recommendations.append({
+                        'name': 'Strategic',
+                        'num_aes': strat_aes,
+                        'accounts': mid_value_count,
+                        'criteria': 'Mid account score (25th-75th percentile)',
+                        'rationale': 'Balanced approach for growing accounts'
+                    })
+                
+                # Regional splits if we have region data
+                if region_col and len(recommendations) > 0:
+                    # Map to high-level regions
+                    def get_high_level_region(location):
+                        location = str(location).upper()
+                        if any(x in location for x in ['US', 'USA', 'UNITED STATES', 'CANADA', 'CA', 'MEXICO', 'MX', 
+                                                        'NY', 'TX', 'FL', 'IL', 'NORTH AMERICA']):
+                            return 'NAMER'
+                        elif any(x in location for x in ['UK', 'GB', 'GERMANY', 'DE', 'FRANCE', 'FR', 'SPAIN', 'ES', 
+                                                          'ITALY', 'IT', 'NETHERLANDS', 'NL', 'EUROPE', 'EMEA', 
+                                                          'MIDDLE EAST', 'AFRICA']):
+                            return 'EMEA'
+                        elif any(x in location for x in ['CHINA', 'CN', 'JAPAN', 'JP', 'INDIA', 'IN', 'AUSTRALIA', 'AU',
+                                                          'SINGAPORE', 'SG', 'KOREA', 'KR', 'ASIA', 'APAC', 'PACIFIC']):
+                            return 'APAC'
+                        elif any(x in location for x in ['BRAZIL', 'BR', 'ARGENTINA', 'AR', 'CHILE', 'CL', 
+                                                          'COLOMBIA', 'CO', 'LATIN AMERICA', 'LATAM']):
+                            return 'LATAM'
+                        return 'Other'
+                    
+                    # Aggregate by high-level region
+                    df_ai['High_Level_Region'] = df_ai[region_col].apply(get_high_level_region)
+                    region_counts = df_ai['High_Level_Region'].value_counts()
+                    
+                    # Only use regions with significant account counts
+                    major_regions = [r for r in region_counts.index if r != 'Other' and region_counts[r] > 50]
+                    
+                    if major_regions:
+                        regional_recs = []
+                        for base_seg in recommendations[:]:
+                            for region in major_regions:
+                                if score_col:
+                                    if base_seg['name'] == 'Enterprise':
+                                        region_accounts = df_ai[(df_ai['High_Level_Region'] == region) & 
+                                                               (df_ai[score_col] > df_ai[score_col].quantile(0.75))]
+                                    else:
+                                        region_accounts = df_ai[(df_ai['High_Level_Region'] == region) & 
+                                                               (df_ai[score_col] >= df_ai[score_col].quantile(0.25)) &
+                                                               (df_ai[score_col] <= df_ai[score_col].quantile(0.75))]
+                                else:
+                                    region_accounts = df_ai[df_ai['High_Level_Region'] == region]
+                                
+                                account_count = len(region_accounts)
+                                
+                                if account_count > 20:
+                                    if base_seg['name'] == 'Enterprise':
+                                        seg_name = f"Ent-{region}"
+                                    else:
+                                        seg_name = f"Strat-{region}"
+                                    
+                                    accounts_per_ae = 15 if 'Ent' in seg_name else 25
+                                    recommended_aes = max(2, int(account_count / accounts_per_ae))
+                                    
+                                    regional_recs.append({
+                                        'name': seg_name,
+                                        'num_aes': recommended_aes,
+                                        'accounts': account_count,
+                                        'criteria': f"{base_seg['criteria']}, {region} region",
+                                        'rationale': f"{region}-focused {base_seg['rationale'].lower()}"
+                                    })
+                        
+                        if regional_recs:
+                            recommendations = regional_recs
+                
+                # Display recommendations
+                st.success("✅ Analysis Complete!")
+                st.markdown("<h4>📋 Recommended Segments:</h4>", unsafe_allow_html=True)
+                
+                total_recommended_aes = sum(r['num_aes'] for r in recommendations)
+                st.metric("Recommended Total AEs", total_recommended_aes, 
+                         delta=f"{total_recommended_aes - current_aes:+d} vs current")
+                
+                # Display each recommendation
+                for i, rec in enumerate(recommendations):
+                    col_rec1, col_rec2 = st.columns([4, 1])
+                    with col_rec1:
+                        st.markdown(f"""
+                            <div class='account-card' style='margin: 12px 0;'>
+                                <h4 style='margin: 0; color: #4299e1;'>{rec['name']}</h4>
+                                <p style='margin: 4px 0;'><strong>AEs:</strong> {rec['num_aes']} | <strong>Accounts:</strong> {rec.get('accounts', 'N/A')}</p>
+                                <p style='margin: 4px 0; color: #a0aec0; font-size: 13px;'><strong>Criteria:</strong> {rec['criteria']}</p>
+                                <p style='margin: 4px 0; color: #718096; font-size: 12px;'>{rec['rationale']}</p>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    with col_rec2:
+                        st.markdown("<div style='padding-top: 20px;'>", unsafe_allow_html=True)
+                        if st.button(f"➕ Add", key=f"add_ai_{i}", use_container_width=True):
+                            if not any(s['name'] == rec['name'] for s in st.session_state.segments):
+                                st.session_state.segments.append({
+                                    'name': rec['name'],
+                                    'num_aes': rec['num_aes'],
+                                    'draft_id': None,
+                                    'status': 'Not Started'
+                                })
+                                st.rerun()
+                        st.markdown("</div>", unsafe_allow_html=True)
+                
+                # Add all button
+                if st.button("✨ Add All Recommended Segments", type="primary", use_container_width=True):
+                    added = 0
+                    for rec in recommendations:
+                        if not any(s['name'] == rec['name'] for s in st.session_state.segments):
+                            st.session_state.segments.append({
+                                'name': rec['name'],
+                                'num_aes': rec['num_aes'],
+                                'draft_id': None,
+                                'status': 'Not Started'
+                            })
+                            added += 1
+                    if added > 0:
+                        st.rerun()
+            
+            except Exception as e:
+                st.error(f"Error analyzing accounts: {str(e)}")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    st.markdown("<hr style='border-color: #2d3748; margin: 30px 0;'>", unsafe_allow_html=True)
+    
+    # MANUAL SEGMENT CREATION & MANAGEMENT
     col1, col2 = st.columns([2, 1])
     
     with col1:
         st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
-        st.markdown("<h3 style='margin-top: 0;'>🌍 Define Segments</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='margin-top: 0;'>🌍 Define Segments Manually</h3>", unsafe_allow_html=True)
         
         # Add new segment
         col_a, col_b, col_c = st.columns([2, 1, 1])
@@ -333,166 +515,6 @@ if st.session_state.view_mode == 'territory_planning':
                         st.rerun()
     
     with col2:
-        st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
-        st.markdown("<h3 style='margin-top: 0;'>🤖 AI Territory Planner</h3>", unsafe_allow_html=True)
-        
-        st.markdown("<p style='color: #a0aec0; font-size: 14px;'>Upload your accounts file and get AI-powered territory recommendations</p>", unsafe_allow_html=True)
-        
-        ai_file = st.file_uploader("Upload accounts CSV", type=['csv'], key="ai_upload")
-        current_aes = st.number_input("Current # of AEs", 1, 1000, 20, key="current_aes")
-        
-        if ai_file and st.button("🔮 Get AI Recommendations", type="primary", use_container_width=True):
-            with st.spinner("Claude is analyzing your accounts..."):
-                try:
-                    # Read the CSV
-                    df_ai = pd.read_csv(ai_file)
-                    
-                    # Create summary stats
-                    total_accounts = len(df_ai)
-                    
-                    # Try to find relevant columns
-                    cols = df_ai.columns.tolist()
-                    industry_col = next((c for c in cols if 'industry' in c.lower()), None)
-                    region_col = next((c for c in cols if any(x in c.lower() for x in ['region', 'state', 'country', 'geo'])), None)
-                    score_col = next((c for c in cols if 'score' in c.lower()), None)
-                    revenue_col = next((c for c in cols if any(x in c.lower() for x in ['revenue', 'arr', 'value'])), None)
-                    
-                    # Build analysis prompt
-                    prompt = f"""Analyze this sales account data and recommend an optimal territory segmentation strategy.
-
-**Current Situation:**
-- Total Accounts: {total_accounts:,}
-- Current AEs: {current_aes}
-- Accounts per AE: {total_accounts/current_aes:.1f}
-
-**Account Data Summary:**
-"""
-                    
-                    if industry_col:
-                        industries = df_ai[industry_col].value_counts().head(10)
-                        prompt += f"\nTop Industries:\n"
-                        for ind, count in industries.items():
-                            prompt += f"  - {ind}: {count} accounts\n"
-                    
-                    if region_col:
-                        regions = df_ai[region_col].value_counts().head(10)
-                        prompt += f"\nTop Regions:\n"
-                        for reg, count in regions.items():
-                            prompt += f"  - {reg}: {count} accounts\n"
-                    
-                    if score_col:
-                        df_ai[score_col] = pd.to_numeric(df_ai[score_col], errors='coerce')
-                        prompt += f"\nAccount Score Distribution:\n"
-                        prompt += f"  - Mean: {df_ai[score_col].mean():.2f}\n"
-                        prompt += f"  - Median: {df_ai[score_col].median():.2f}\n"
-                        prompt += f"  - High-value (>75th percentile): {(df_ai[score_col] > df_ai[score_col].quantile(0.75)).sum()} accounts\n"
-                    
-                    prompt += f"""
-
-**Your Task:**
-Create a territory segmentation strategy with 3-6 segments based on the data patterns above.
-
-Provide smart recommendations considering account distribution, value tiers, and regional splits."""
-
-                    # Generate smart recommendations based on data
-                    recommendations = []
-                    
-                    # Enterprise vs Strategic split
-                    if score_col:
-                        high_value_count = (df_ai[score_col] > df_ai[score_col].quantile(0.75)).sum()
-                        mid_value_count = ((df_ai[score_col] >= df_ai[score_col].quantile(0.25)) & 
-                                         (df_ai[score_col] <= df_ai[score_col].quantile(0.75))).sum()
-                        
-                        # Enterprise (high-value)
-                        ent_aes = max(3, int(high_value_count / 15))  # ~15 accounts per enterprise AE
-                        recommendations.append({
-                            'name': 'Enterprise',
-                            'num_aes': ent_aes,
-                            'accounts': high_value_count,
-                            'criteria': 'High account score (top 25%)',
-                            'rationale': 'Lower account load for high-touch enterprise sales'
-                        })
-                        
-                        # Strategic (mid-value)
-                        strat_aes = max(5, int(mid_value_count / 25))  # ~25 accounts per strategic AE
-                        recommendations.append({
-                            'name': 'Strategic',
-                            'num_aes': strat_aes,
-                            'accounts': mid_value_count,
-                            'criteria': 'Mid account score (25th-75th percentile)',
-                            'rationale': 'Balanced approach for growing accounts'
-                        })
-                    
-                    # Regional splits if we have region data
-                    if region_col and len(recommendations) > 0:
-                        top_regions = df_ai[region_col].value_counts().head(3).index.tolist()
-                        
-                        regional_recs = []
-                        for base_seg in recommendations[:]:  # Copy to avoid modifying while iterating
-                            for region in top_regions:
-                                region_accounts = len(df_ai[df_ai[region_col] == region])
-                                if region_accounts > 50:  # Only if substantial
-                                    regional_recs.append({
-                                        'name': f"{base_seg['name']}-{region}",
-                                        'num_aes': max(2, int(base_seg['num_aes'] * (region_accounts / total_accounts))),
-                                        'accounts': region_accounts,
-                                        'criteria': f"{base_seg['criteria']}, Region: {region}",
-                                        'rationale': f"Regional focus with {base_seg['rationale'].lower()}"
-                                    })
-                        
-                        if regional_recs:
-                            recommendations = regional_recs
-                    
-                    # Display recommendations
-                    st.markdown("<h4>📋 Recommended Segments:</h4>", unsafe_allow_html=True)
-                    
-                    total_recommended_aes = sum(r['num_aes'] for r in recommendations)
-                    st.metric("Recommended Total AEs", total_recommended_aes, 
-                             delta=f"{total_recommended_aes - current_aes:+d} vs current")
-                    
-                    for rec in recommendations:
-                        st.markdown(f"""
-                            <div class='account-card' style='margin: 12px 0;'>
-                                <h4 style='margin: 0; color: #4299e1;'>{rec['name']}</h4>
-                                <p style='margin: 4px 0;'><strong>AEs:</strong> {rec['num_aes']} | <strong>Accounts:</strong> {rec.get('accounts', 'N/A')}</p>
-                                <p style='margin: 4px 0; color: #a0aec0; font-size: 13px;'><strong>Criteria:</strong> {rec['criteria']}</p>
-                                <p style='margin: 4px 0; color: #718096; font-size: 12px;'>{rec['rationale']}</p>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        
-                        # Add quick-add button
-                        if st.button(f"➕ Add {rec['name']}", key=f"add_ai_{rec['name']}", use_container_width=True):
-                            if not any(s['name'] == rec['name'] for s in st.session_state.segments):
-                                st.session_state.segments.append({
-                                    'name': rec['name'],
-                                    'num_aes': rec['num_aes'],
-                                    'draft_id': None,
-                                    'status': 'Not Started'
-                                })
-                                st.success(f"✅ Added {rec['name']}")
-                                st.rerun()
-                    
-                    if st.button("✨ Add All Recommended Segments", type="primary", use_container_width=True):
-                        added = 0
-                        for rec in recommendations:
-                            if not any(s['name'] == rec['name'] for s in st.session_state.segments):
-                                st.session_state.segments.append({
-                                    'name': rec['name'],
-                                    'num_aes': rec['num_aes'],
-                                    'draft_id': None,
-                                    'status': 'Not Started'
-                                })
-                                added += 1
-                        if added > 0:
-                            st.success(f"✅ Added {added} segments!")
-                            st.rerun()
-                
-                except Exception as e:
-                    st.error(f"Error analyzing accounts: {str(e)}")
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-        # Original summary section
         st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
         st.markdown("<h3 style='margin-top: 0;'>📊 Summary</h3>", unsafe_allow_html=True)
         
@@ -667,37 +689,125 @@ if st.session_state.stage == 'upload':
                 df_mapped['Account_Score'] = pd.to_numeric(df_mapped['Account_Score'], errors='coerce')
                 df_mapped = df_mapped.dropna(subset=['Account_Score'])
                 
+                # TERRITORY-BASED FILTERING
+                # Get the segment name for this draft
+                if st.session_state.current_draft_id in st.session_state.all_drafts:
+                    segment_name = st.session_state.all_drafts[st.session_state.current_draft_id]['segment_name']
+                    
+                    st.markdown("<div class='draft-card' style='background: #2c5282; border: 2px solid #4299e1;'>", unsafe_allow_html=True)
+                    st.markdown(f"<h3 style='color: #4299e1; margin-top: 0;'>🎯 Territory Filter: {segment_name}</h3>", unsafe_allow_html=True)
+                    
+                    original_count = len(df_mapped)
+                    
+                    # Parse segment name (e.g., "Ent-NAMER", "Strat-EMEA")
+                    segment_parts = segment_name.split('-')
+                    
+                    # Determine if Enterprise or Strategic
+                    is_enterprise = 'Ent' in segment_name or 'Enterprise' in segment_name
+                    is_strategic = 'Strat' in segment_name or 'Strategic' in segment_name
+                    
+                    # Determine region
+                    region = None
+                    if 'NAMER' in segment_name:
+                        region = 'NAMER'
+                    elif 'EMEA' in segment_name:
+                        region = 'EMEA'
+                    elif 'APAC' in segment_name:
+                        region = 'APAC'
+                    elif 'LATAM' in segment_name:
+                        region = 'LATAM'
+                    
+                    # Apply filters
+                    filters_applied = []
+                    
+                    # Filter by account score tier
+                    if is_enterprise:
+                        threshold = df_mapped['Account_Score'].quantile(0.75)
+                        df_mapped = df_mapped[df_mapped['Account_Score'] > threshold]
+                        filters_applied.append(f"Enterprise tier (score > {threshold:.2f})")
+                    elif is_strategic:
+                        lower = df_mapped['Account_Score'].quantile(0.25)
+                        upper = df_mapped['Account_Score'].quantile(0.75)
+                        df_mapped = df_mapped[(df_mapped['Account_Score'] >= lower) & (df_mapped['Account_Score'] <= upper)]
+                        filters_applied.append(f"Strategic tier (score {lower:.2f} - {upper:.2f})")
+                    
+                    # Filter by region (look for region-related columns)
+                    if region:
+                        region_cols = [c for c in df_mapped.columns if any(x in c.lower() for x in ['region', 'state', 'country', 'geo', 'billing'])]
+                        
+                        if region_cols:
+                            region_col = region_cols[0]  # Use first region column found
+                            
+                            # Define region mappings
+                            region_keywords = {
+                                'NAMER': ['US', 'USA', 'UNITED STATES', 'CANADA', 'CA', 'MEXICO', 'MX', 
+                                         'NY', 'TX', 'FL', 'IL', 'NORTH AMERICA'],
+                                'EMEA': ['UK', 'GB', 'GERMANY', 'DE', 'FRANCE', 'FR', 'SPAIN', 'ES', 
+                                        'ITALY', 'IT', 'NETHERLANDS', 'NL', 'EUROPE', 'EMEA', 
+                                        'MIDDLE EAST', 'AFRICA'],
+                                'APAC': ['CHINA', 'CN', 'JAPAN', 'JP', 'INDIA', 'IN', 'AUSTRALIA', 'AU',
+                                        'SINGAPORE', 'SG', 'KOREA', 'KR', 'ASIA', 'APAC', 'PACIFIC'],
+                                'LATAM': ['BRAZIL', 'BR', 'ARGENTINA', 'AR', 'CHILE', 'CL', 
+                                         'COLOMBIA', 'CO', 'LATIN AMERICA', 'LATAM']
+                            }
+                            
+                            keywords = region_keywords.get(region, [])
+                            if keywords:
+                                # Filter to accounts in this region
+                                df_mapped = df_mapped[df_mapped[region_col].astype(str).str.upper().str.contains('|'.join(keywords), na=False)]
+                                filters_applied.append(f"{region} region")
+                    
+                    filtered_count = len(df_mapped)
+                    
+                    st.markdown(f"""
+                        <p style='margin: 8px 0;'><strong>Filters Applied:</strong></p>
+                        <ul style='margin: 4px 0; padding-left: 20px;'>
+                            {''.join([f'<li>{f}</li>' for f in filters_applied])}
+                        </ul>
+                        <p style='margin: 12px 0 0 0;'>
+                            <strong style='color: #63b3ed;'>{filtered_count:,} accounts</strong> match this territory 
+                            (filtered from {original_count:,} total)
+                        </p>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    if filtered_count == 0:
+                        st.error("❌ No accounts match this territory's criteria. Please upload a different dataset or check your segment definition.")
+                        st.stop()
+                
                 st.markdown("</div>", unsafe_allow_html=True)
                 
-                if st.button("✅ Confirm Mapping", type="primary"):
+                if st.button("✅ Confirm Mapping & Apply Territory Filter", type="primary"):
                     st.session_state.accounts_df = df_mapped
+                    sync_to_current_draft()
                 
                 st.markdown("<div class='draft-card' style='background: linear-gradient(135deg, #22543d 0%, #1a2f23 100%); border-color: #48bb78;'>", unsafe_allow_html=True)
-                st.markdown(f"<h3 style='color: #48bb78; margin-top: 0;'>✅ Successfully loaded {len(df):,} accounts!</h3>", unsafe_allow_html=True)
+                st.markdown(f"<h3 style='color: #48bb78; margin-top: 0;'>✅ Successfully loaded {len(df_mapped):,} accounts for this territory!</h3>", unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
                 
                 # Show preview
                 st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
-                st.markdown("<h3>📊 Data Preview</h3>", unsafe_allow_html=True)
-                st.dataframe(df.head(10), use_container_width=True)
+                st.markdown("<h3>📊 Data Preview (Filtered for Territory)</h3>", unsafe_allow_html=True)
+                st.dataframe(df_mapped.head(10), use_container_width=True)
                 st.markdown("</div>", unsafe_allow_html=True)
                 
                 # Show summary stats
                 st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.metric("Total Accounts", f"{len(df):,}")
+                    st.metric("Territory Accounts", f"{len(df_mapped):,}")
                 with col2:
-                    st.metric("Unique Owners", df['Account_Owner_Name'].nunique())
+                    st.metric("Unique Owners", df_mapped['Account_Owner_Name'].nunique())
                 with col3:
-                    st.metric("Avg Account Score", f"{df['Account_Score'].mean():.2f}")
+                    st.metric("Avg Account Score", f"{df_mapped['Account_Score'].mean():.2f}")
                 st.markdown("</div>", unsafe_allow_html=True)
                 
                 # Breakdown by Account Owner
                 st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
                 st.markdown("<h3>👥 Account Breakdown by Owner</h3>", unsafe_allow_html=True)
                 
-                owner_stats = df.groupby('Account_Owner_Name').agg({
+                owner_stats = df_mapped.groupby('Account_Owner_Name').agg({
                     'Account_ID': 'count',
                     'Account_Score': ['mean', 'max', 'min', 'sum']
                 }).round(2)
@@ -710,6 +820,7 @@ if st.session_state.stage == 'upload':
                 
                 if st.button("➡️ Proceed to Draft Setup", type="primary"):
                     st.session_state.stage = 'setup'
+                    sync_to_current_draft()
                     st.rerun()
                     
         except Exception as e:
@@ -839,6 +950,7 @@ elif st.session_state.stage == 'setup':
             # Initialize AE books with current accounts
             st.session_state.ae_books = {ae: [] for ae in selected_aes}
             st.session_state.stage = 'cleanup'
+            sync_to_current_draft()
             st.rerun()
 
 # Stage 3: Pre-Draft Cleanup
@@ -946,6 +1058,7 @@ elif st.session_state.stage == 'cleanup':
     if st.button("➡️ Continue to Blacklist & Draft Setup", type="primary"):
         st.session_state.available_accounts = available_for_draft.sort_values('Account_Score', ascending=False).to_dict('records')
         st.session_state.stage = 'blacklist'
+        sync_to_current_draft()
         st.rerun()
 
 # Stage 3.5: Blacklist (new separate stage)
@@ -1038,6 +1151,7 @@ elif st.session_state.stage == 'blacklist':
         st.session_state.current_pick = 0
         st.session_state.draft_picks = []
         st.session_state.stage = 'draft'
+        sync_to_current_draft()
         st.rerun()
 
 # Stage 4: Live Draft
@@ -1052,6 +1166,7 @@ elif st.session_state.stage == 'draft':
         st.error("No AEs found! Please go back to setup.")
         if st.button("← Back to Setup"):
             st.session_state.stage = 'setup'
+            sync_to_current_draft()
             st.rerun()
         st.stop()
     
@@ -1091,6 +1206,7 @@ elif st.session_state.stage == 'draft':
         
         if st.button("➡️ View Results", type="primary"):
             st.session_state.stage = 'results'
+            sync_to_current_draft()
             st.rerun()
     else:
         col1, col2 = st.columns([2, 1])
