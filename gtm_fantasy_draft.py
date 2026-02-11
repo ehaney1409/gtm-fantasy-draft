@@ -12,30 +12,30 @@ st.set_page_config(page_title="Kittil.io - GTM Fantasy Draft", layout="wide", pa
 # Custom CSS for modern light theme
 st.markdown("""
 <style>
-    /* Base App Styling */
+    /* Base App Styling - PURE WHITE BACKGROUND */
     .stApp { 
-        background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
+        background: #ffffff !important;
     }
     .main { 
-        background-color: transparent;
+        background-color: #ffffff !important;
     }
     
-    /* Header Logo Styling */
+    /* Header Logo Styling - LARGER LOGO */
     .logo-container {
         display: flex;
         align-items: center;
-        gap: 16px;
+        gap: 20px;
         margin-bottom: 24px;
         padding: 16px 0;
     }
     
     .logo-container img {
-        height: 48px;
+        height: 72px !important;
         width: auto;
     }
     
     .logo-text {
-        font-size: 32px;
+        font-size: 36px;
         font-weight: 700;
         color: #1e293b;
         letter-spacing: -0.5px;
@@ -230,7 +230,7 @@ st.markdown("""
         overflow: hidden;
     }
     
-    /* Input Fields */
+    /* Input Fields - LIGHTER STYLING */
     .stTextInput input, .stNumberInput input, .stSelectbox select {
         border-radius: 10px !important;
         border: 1px solid #e2e8f0 !important;
@@ -243,17 +243,25 @@ st.markdown("""
         box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1) !important;
     }
     
-    /* File Uploader */
+    /* File Uploader - LIGHTER, NOT DARK */
     .stFileUploader {
-        background: #ffffff;
-        border: 2px dashed #e2e8f0;
+        background: #ffffff !important;
+        border: 2px dashed #cbd5e1 !important;
         border-radius: 12px;
         padding: 24px;
     }
     
     .stFileUploader:hover {
-        border-color: #8b5cf6;
-        background: #faf5ff;
+        border-color: #8b5cf6 !important;
+        background: #faf5ff !important;
+    }
+    
+    .stFileUploader label {
+        color: #475569 !important;
+    }
+    
+    .stFileUploader [data-testid="stFileUploaderDropzone"] {
+        background: #ffffff !important;
     }
     
     /* Progress Bar */
@@ -329,7 +337,7 @@ st.markdown("""
 
 # Initialize multi-draft system
 if 'view_mode' not in st.session_state:
-    st.session_state.view_mode = 'territory_planning'  # territory_planning, draft_flow, manage_drafts
+    st.session_state.view_mode = 'territory_planning'
 if 'all_drafts' not in st.session_state:
     st.session_state.all_drafts = {}
 if 'current_draft_id' not in st.session_state:
@@ -339,7 +347,7 @@ if 'segments' not in st.session_state:
 if 'ai_recommendations' not in st.session_state:
     st.session_state.ai_recommendations = None
 
-# Legacy single-draft state (for compatibility with existing code)
+# Legacy single-draft state
 if 'stage' not in st.session_state:
     st.session_state.stage = 'upload'
 if 'accounts_df' not in st.session_state:
@@ -800,6 +808,9 @@ elif st.session_state.view_mode == 'territory_planning':
                         if regional_recs:
                             recommendations = regional_recs
                 
+                # Store recommendations in session state - THIS IS THE KEY FIX
+                st.session_state.ai_recommendations = recommendations
+                
                 # Display recommendations
                 st.success(f"✅ Analysis complete! Generated {len(recommendations)} territory recommendations")
                 
@@ -829,7 +840,7 @@ elif st.session_state.view_mode == 'territory_planning':
                         """, unsafe_allow_html=True)
                     with col_rec2:
                         st.markdown("<div style='padding-top: 20px;'>", unsafe_allow_html=True)
-                        if st.button(f"➕ Add", key=f"add_ai_{i}", use_container_width=True):
+                        if st.button(f"➕ Add", key=f"add_ai_init_{i}", use_container_width=True):
                             if not any(s['name'] == rec['name'] for s in st.session_state.segments):
                                 st.session_state.segments.append({
                                     'name': rec['name'],
@@ -837,11 +848,12 @@ elif st.session_state.view_mode == 'territory_planning':
                                     'draft_id': None,
                                     'status': 'Not Started'
                                 })
+                                st.success(f"✅ Added {rec['name']}!")
                                 st.rerun()
                         st.markdown("</div>", unsafe_allow_html=True)
                 
                 # Add all button
-                if st.button("✨ Add All Recommended Segments", type="primary", use_container_width=True):
+                if st.button("✨ Add All Recommended Segments", type="primary", use_container_width=True, key="add_all_init"):
                     added = 0
                     for rec in recommendations:
                         if not any(s['name'] == rec['name'] for s in st.session_state.segments):
@@ -853,57 +865,85 @@ elif st.session_state.view_mode == 'territory_planning':
                             })
                             added += 1
                     if added > 0:
+                        st.success(f"✅ Added {added} segment(s)!")
                         st.rerun()
             
             except Exception as e:
                 st.error(f"Error analyzing file: {str(e)}")
     
+    # Display saved recommendations if they exist
+    elif st.session_state.ai_recommendations:
+        st.info(f"📊 Showing {len(st.session_state.ai_recommendations)} previously generated recommendations")
+        
+        recommendations = st.session_state.ai_recommendations
+        
+        # Display each recommendation
+        for i, rec in enumerate(recommendations):
+            col_rec1, col_rec2 = st.columns([4, 1])
+            with col_rec1:
+                st.markdown(f"""
+                    <div class='account-card' style='margin: 12px 0;'>
+                        <h4 style='margin: 0; color: #8b5cf6;'>{rec['name']}</h4>
+                        <p style='margin: 4px 0;'>
+                            <strong>AEs:</strong> {rec['num_aes']} | 
+                            <strong>Accounts:</strong> {rec.get('accounts', 'N/A')} | 
+                            <strong>Per Rep:</strong> {rec.get('accounts_per_rep', 'N/A')}
+                        </p>
+                        <p style='margin: 4px 0; color: #64748b; font-size: 13px;'><strong>Criteria:</strong> {rec['criteria']}</p>
+                        <p style='margin: 4px 0; color: #475569; font-size: 12px;'>{rec['rationale']}</p>
+                    </div>
+                """, unsafe_allow_html=True)
+            with col_rec2:
+                st.markdown("<div style='padding-top: 20px;'>", unsafe_allow_html=True)
+                if st.button(f"➕ Add", key=f"add_ai_saved_{i}", use_container_width=True):
+                    if not any(s['name'] == rec['name'] for s in st.session_state.segments):
+                        st.session_state.segments.append({
+                            'name': rec['name'],
+                            'num_aes': rec['num_aes'],
+                            'draft_id': None,
+                            'status': 'Not Started'
+                        })
+                        st.success(f"✅ Added {rec['name']}!")
+                        st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Add all button
+        if st.button("✨ Add All Recommended Segments", type="primary", use_container_width=True, key="add_all_saved"):
+            added = 0
+            for rec in recommendations:
+                if not any(s['name'] == rec['name'] for s in st.session_state.segments):
+                    st.session_state.segments.append({
+                        'name': rec['name'],
+                        'num_aes': rec['num_aes'],
+                        'draft_id': None,
+                        'status': 'Not Started'
+                    })
+                    added += 1
+            if added > 0:
+                st.success(f"✅ Added {added} segment(s)!")
+                st.rerun()
+    
     st.markdown("</div>", unsafe_allow_html=True)
     
     st.markdown("---")
     
-    # Display segments
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        if st.session_state.segments:
-            st.markdown("<h3>📋 Your Segments</h3>", unsafe_allow_html=True)
+    # Display segments - CHANGED TO HORIZONTAL LAYOUT
+    if st.session_state.segments:
+        st.markdown("<h3>📋 Your Segments</h3>", unsafe_allow_html=True)
+        
+        for idx, seg in enumerate(st.session_state.segments):
+            st.markdown(f"""
+                <div class='segment-card'>
+                    <h4 style='margin: 0;'>{seg['name']}</h4>
+                    <p style='color: #64748b; margin: 4px 0;'>{seg['num_aes']} AEs | Status: {seg['status']}</p>
+                </div>
+            """, unsafe_allow_html=True)
             
-            for idx, seg in enumerate(st.session_state.segments):
-                st.markdown(f"""
-                    <div class='segment-card'>
-                        <h4 style='margin: 0;'>{seg['name']}</h4>
-                        <p style='color: #64748b; margin: 4px 0;'>{seg['num_aes']} AEs | Status: {seg['status']}</p>
-                    </div>
-                """, unsafe_allow_html=True)
-                
-                col_x, col_y, col_z = st.columns([2, 2, 1])
-                
-                with col_x:
-                    if seg['status'] == 'Not Started':
-                        if st.button(f"🚀 Start Draft", key=f"start_{idx}", use_container_width=True):
-                            draft_id = create_new_draft(seg['name'])
-                            st.session_state.segments[idx]['draft_id'] = draft_id
-                            st.session_state.segments[idx]['status'] = 'In Progress'
-                            st.session_state.current_draft_id = draft_id
-                            st.session_state.view_mode = 'draft_flow'
-                            sync_from_current_draft()
-                            st.rerun()
-                    elif seg['status'] == 'In Progress':
-                        if st.button(f"▶️ Continue", key=f"cont_{idx}", use_container_width=True):
-                            st.session_state.current_draft_id = seg['draft_id']
-                            st.session_state.view_mode = 'draft_flow'
-                            sync_from_current_draft()
-                            st.rerun()
-                    else:
-                        if st.button(f"👁️ View", key=f"view_{idx}", use_container_width=True):
-                            st.session_state.current_draft_id = seg['draft_id']
-                            st.session_state.view_mode = 'draft_flow'
-                            sync_from_current_draft()
-                            st.rerun()
-                
-                with col_y:
-                    if seg.get('draft_id') and st.button(f"🔄 New Draft", key=f"new_{idx}", use_container_width=True):
+            col_x, col_y, col_z = st.columns([2, 2, 1])
+            
+            with col_x:
+                if seg['status'] == 'Not Started':
+                    if st.button(f"🚀 Start Draft", key=f"start_{idx}", use_container_width=True):
                         draft_id = create_new_draft(seg['name'])
                         st.session_state.segments[idx]['draft_id'] = draft_id
                         st.session_state.segments[idx]['status'] = 'In Progress'
@@ -911,406 +951,866 @@ elif st.session_state.view_mode == 'territory_planning':
                         st.session_state.view_mode = 'draft_flow'
                         sync_from_current_draft()
                         st.rerun()
-                
-                with col_z:
-                    if st.button("🗑️", key=f"del_{idx}", help="Delete segment"):
-                        st.session_state.segments.pop(idx)
+                elif seg['status'] == 'In Progress':
+                    if st.button(f"▶️ Continue", key=f"cont_{idx}", use_container_width=True):
+                        st.session_state.current_draft_id = seg['draft_id']
+                        st.session_state.view_mode = 'draft_flow'
+                        sync_from_current_draft()
                         st.rerun()
-    
-    with col2:
-        st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
-        st.markdown("<h3 style='margin-top: 0;'>📊 Summary</h3>", unsafe_allow_html=True)
+                else:
+                    if st.button(f"👁️ View", key=f"view_{idx}", use_container_width=True):
+                        st.session_state.current_draft_id = seg['draft_id']
+                        st.session_state.view_mode = 'draft_flow'
+                        sync_from_current_draft()
+                        st.rerun()
+            
+            with col_y:
+                if seg.get('draft_id') and st.button(f"🔄 New Draft", key=f"new_{idx}", use_container_width=True):
+                    draft_id = create_new_draft(seg['name'])
+                    st.session_state.segments[idx]['draft_id'] = draft_id
+                    st.session_state.segments[idx]['status'] = 'In Progress'
+                    st.session_state.current_draft_id = draft_id
+                    st.session_state.view_mode = 'draft_flow'
+                    sync_from_current_draft()
+                    st.rerun()
+            
+            with col_z:
+                if st.button("🗑️", key=f"del_{idx}", help="Delete segment"):
+                    st.session_state.segments.pop(idx)
+                    st.rerun()
+        
+        st.markdown("---")
+        
+        # HORIZONTAL SUMMARY SECTION
+        st.markdown("<h3>📊 Summary</h3>", unsafe_allow_html=True)
         
         total_segments = len(st.session_state.segments)
         total_aes = sum(s['num_aes'] for s in st.session_state.segments)
         completed = sum(1 for s in st.session_state.segments if s['status'] == 'Completed')
         
-        st.metric("Segments", total_segments)
-        st.metric("Total AEs", total_aes)
-        st.metric("Drafts", len(st.session_state.all_drafts))
+        col_sum1, col_sum2, col_sum3, col_sum4 = st.columns(4)
         
-        if total_segments > 0:
-            progress = completed / total_segments if total_segments > 0 else 0
-            st.progress(progress)
-            st.markdown(f"<p style='text-align: center; color: #64748b;'>{int(progress * 100)}% Complete</p>", unsafe_allow_html=True)
-        
-        st.markdown("</div>", unsafe_allow_html=True)
+        with col_sum1:
+            st.metric("Segments", total_segments)
+        with col_sum2:
+            st.metric("Total AEs", total_aes)
+        with col_sum3:
+            st.metric("Drafts", len(st.session_state.all_drafts))
+        with col_sum4:
+            if total_segments > 0:
+                progress = completed / total_segments
+                st.metric("Progress", f"{int(progress * 100)}%")
 
 # =============================================================================
-# DRAFT FLOW VIEW
+# DRAFT FLOW VIEW - (Original code continues - not shown for brevity,
+# but includes all 5 stages: upload, ae_config, keepers, draft, results)
 # =============================================================================
 
 elif st.session_state.view_mode == 'draft_flow':
-    
-    # Sidebar - Draft Information
+    # Show current draft info
+    if st.session_state.current_draft_id in st.session_state.all_drafts:
+        draft_info = st.session_state.all_drafts[st.session_state.current_draft_id]
+        st.markdown(f"""
+            <div style='background: #2d3748; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px;'>
+                <strong style='color: #4299e1;'>📍 {draft_info['segment_name']}</strong> | 
+                <strong>Stage:</strong> {st.session_state.stage.replace('_', ' ').title()} | 
+                <strong>Created:</strong> {draft_info['created_at']}
+            </div>
+        """, unsafe_allow_html=True)
+
+# Sidebar for navigation and settings (only show in draft mode)
+if st.session_state.view_mode == 'draft_flow':
     with st.sidebar:
-        if st.session_state.current_draft_id:
-            current_draft = st.session_state.all_drafts.get(st.session_state.current_draft_id, {})
-            st.markdown(f"""
-                <div class='segment-card'>
-                    <h4 style='margin-top: 0; color: #8b5cf6;'>Current Draft</h4>
-                    <p style='margin: 4px 0;'><strong>Segment:</strong> {current_draft.get('segment_name', 'N/A')}</p>
-                    <p style='margin: 4px 0;'><strong>Created:</strong> {current_draft.get('created_at', 'N/A')}</p>
-                    <p style='margin: 4px 0;'><strong>Stage:</strong> {st.session_state.stage.replace('_', ' ').title()}</p>
-                </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        st.subheader("📋 Draft Stages")
-        
-        stages = ['upload', 'ae_config', 'keepers', 'draft', 'results']
-        stage_labels = {
-            'upload': '1️⃣ Upload Data',
-            'ae_config': '2️⃣ Configure AEs',
-            'keepers': '3️⃣ Select Keepers',
-            'draft': '4️⃣ Live Draft',
-            'results': '5️⃣ Results'
-        }
-        
-        current_stage_idx = stages.index(st.session_state.stage) if st.session_state.stage in stages else 0
-        
-        for idx, stage in enumerate(stages):
-            if idx < current_stage_idx:
-                st.markdown(f"✅ {stage_labels[stage]}")
-            elif idx == current_stage_idx:
-                st.markdown(f"**▶️ {stage_labels[stage]}**")
-            else:
-                st.markdown(f"⚪ {stage_labels[stage]}")
-    
-    # =============================================================================
-    # Stage 1: Upload Accounts
-    # =============================================================================
-    
-    if st.session_state.stage == 'upload':
-        st.header("📤 Upload Account Data")
-        
         st.markdown("""
-            <div class='draft-card'>
-                <p style='margin: 0; font-size: 16px;'>
-                    Upload a CSV file containing your account data. Required columns: 
-                    <strong>Account_ID</strong>, <strong>Account_Name</strong>, and <strong>Account_Score</strong>.
-                </p>
+            <div style='text-align: center; padding: 20px 0;'>
+                <h2 style='font-size: 24px; margin: 0;'>⚙️ Draft Control</h2>
             </div>
         """, unsafe_allow_html=True)
         
-        uploaded_file = st.file_uploader("Choose CSV file", type=['csv'])
-        
-        if uploaded_file:
-            try:
-                df = pd.read_csv(uploaded_file)
+        if st.session_state.stage in ['setup', 'cleanup', 'blacklist', 'draft', 'results'] and st.session_state.accounts_df is not None:
+            st.markdown(f"""
+                <div class='draft-card'>
+                    <p style='color: #48bb78; font-weight: 600; margin: 0;'>✅ CSV Loaded</p>
+                    <p style='color: #e2e8f0; font-size: 24px; font-weight: 700; margin: 4px 0;'>{len(st.session_state.accounts_df):,}</p>
+                    <p style='color: #a0aec0; font-size: 12px; margin: 0;'>ACCOUNTS</p>
+                </div>
+            """, unsafe_allow_html=True)
+    
+        if st.session_state.stage in ['blacklist', 'draft', 'results'] and st.session_state.ae_list:
+            st.markdown(f"""
+                <div class='draft-card'>
+                    <p style='color: #4299e1; font-weight: 600; margin: 0;'>👥 AEs in Draft</p>
+                    <p style='color: #e2e8f0; font-size: 24px; font-weight: 700; margin: 4px 0;'>{len(st.session_state.ae_list)}</p>
+                    <p style='color: #a0aec0; font-size: 12px; margin: 0;'>{'SNAKE DRAFT' if st.session_state.get('is_snake', True) else 'LINEAR DRAFT'}</p>
+                </div>
+            """, unsafe_allow_html=True)
+    
+        st.markdown("<hr style='border-color: #2d3748; margin: 24px 0;'>", unsafe_allow_html=True)
+    
+        st.markdown("<p style='color: #a0aec0; font-size: 12px; font-weight: 600; letter-spacing: 1px;'>DRAFT PROGRESS</p>", unsafe_allow_html=True)
+    
+        stages = {
+            'upload': ('1', 'Upload CSV'),
+            'setup': ('2', 'Draft Setup'), 
+            'cleanup': ('3', 'Pre-Draft'),
+            'blacklist': ('4', 'Blacklist'),
+            'draft': ('5', 'Live Draft'),
+            'results': ('6', 'Results')
+        }
+    
+        for key, (num, label) in stages.items():
+            if st.session_state.stage == key:
+                st.markdown(f"""
+                    <div style='background: #2d3748; padding: 12px; border-radius: 8px; margin: 8px 0; border-left: 4px solid #48bb78;'>
+                        <span style='color: #48bb78; font-weight: 700;'>{num}</span>
+                        <span style='color: #f7fafc; font-weight: 600; margin-left: 12px;'>{label}</span>
+                    </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                    <div style='padding: 12px; margin: 8px 0;'>
+                        <span style='color: #4a5568; font-weight: 600;'>{num}</span>
+                        <span style='color: #718096; margin-left: 12px;'>{label}</span>
+                    </div>
+                """, unsafe_allow_html=True)
+
+
+# Stage 1: CSV Upload
+if st.session_state.stage == 'upload':
+    st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
+    st.markdown("<h2 style='margin-top: 0;'>📁 Upload Your Account Data</h2>", unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div style='background: #2d3748; padding: 16px; border-radius: 8px; margin: 16px 0;'>
+        <p style='color: #e2e8f0; font-weight: 600; margin: 0 0 8px 0;'>Required Columns:</p>
+        <ul style='color: #a0aec0; margin: 0; padding-left: 20px;'>
+            <li><strong style='color: #4299e1;'>Account Name</strong> or Account_Name</li>
+            <li><strong style='color: #4299e1;'>Account ID</strong> or Account_ID</li>
+            <li><strong style='color: #4299e1;'>Account Owner Name</strong> or Account_Owner_Name</li>
+            <li><strong style='color: #4299e1;'>Account Score</strong> or Account_Score (numerical)</li>
+        </ul>
+        <p style='color: #718096; font-size: 14px; margin: 12px 0 0 0;'>Optional: Parent Account ID, Industry, Sub-Industry, Billing State, etc.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    uploaded_file = st.file_uploader("Drop your CSV here or click to browse", type=['csv'])
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    if uploaded_file is not None:
+        try:
+            df = pd.read_csv(uploaded_file)
+            
+            # Normalize column names
+            df.columns = df.columns.str.strip().str.replace(' ', '_')
+            
+            st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
+            st.markdown("<h3>🔗 Map Your Columns</h3>", unsafe_allow_html=True)
+            st.markdown("<p style='color: #a0aec0;'>Match your CSV columns to the required fields:</p>", unsafe_allow_html=True)
+            
+            available_columns = [''] + df.columns.tolist()
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                account_name_col = st.selectbox(
+                    "Account Name *",
+                    available_columns,
+                    index=next((i for i, col in enumerate(available_columns) if 'account' in col.lower() and 'name' in col.lower()), 0)
+                )
+                account_id_col = st.selectbox(
+                    "Account ID *",
+                    available_columns,
+                    index=next((i for i, col in enumerate(available_columns) if 'account' in col.lower() and 'id' in col.lower()), 0)
+                )
+            
+            with col2:
+                account_owner_col = st.selectbox(
+                    "Account Owner Name *",
+                    available_columns,
+                    index=next((i for i, col in enumerate(available_columns) if 'owner' in col.lower() and 'name' in col.lower()), 0)
+                )
+                account_score_col = st.selectbox(
+                    "Account Score *",
+                    available_columns,
+                    index=next((i for i, col in enumerate(available_columns) if 'score' in col.lower()), 0)
+                )
+            
+            # Validate mapping
+            required_fields = {
+                'Account_Name': account_name_col,
+                'Account_ID': account_id_col,
+                'Account_Owner_Name': account_owner_col,
+                'Account_Score': account_score_col
+            }
+            
+            missing = [field for field, col in required_fields.items() if not col]
+            
+            if missing:
+                st.warning(f"⚠️ Please map all required fields: {', '.join([k for k, v in required_fields.items() if not v])}")
+                st.markdown("</div>", unsafe_allow_html=True)
+            else:
+                # Create new dataframe with mapped columns
+                df_mapped = df.copy()
+                for standard_name, user_col in required_fields.items():
+                    if user_col in df.columns:
+                        df_mapped[standard_name] = df[user_col]
                 
-                # Validate required columns
-                required_cols = ['Account_ID', 'Account_Name', 'Account_Score']
-                if all(col in df.columns for col in required_cols):
-                    st.session_state.accounts_df = df
+                # Convert Account_Score to numeric
+                df_mapped['Account_Score'] = pd.to_numeric(df_mapped['Account_Score'], errors='coerce')
+                df_mapped = df_mapped.dropna(subset=['Account_Score'])
+                
+                # TERRITORY-BASED FILTERING
+                # Get the segment name for this draft
+                if st.session_state.current_draft_id in st.session_state.all_drafts:
+                    segment_name = st.session_state.all_drafts[st.session_state.current_draft_id]['segment_name']
                     
-                    st.success(f"✅ Successfully loaded {len(df)} accounts!")
+                    st.markdown("<div class='draft-card' style='background: #2c5282; border: 2px solid #4299e1;'>", unsafe_allow_html=True)
+                    st.markdown(f"<h3 style='color: #4299e1; margin-top: 0;'>🎯 Territory Filter: {segment_name}</h3>", unsafe_allow_html=True)
                     
-                    # Preview data
-                    st.subheader("📊 Data Preview")
+                    original_count = len(df_mapped)
+                    
+                    # Parse segment name (e.g., "Ent-NAMER", "Strat-EMEA")
+                    segment_parts = segment_name.split('-')
+                    
+                    # Determine if Enterprise or Strategic
+                    is_enterprise = 'Ent' in segment_name or 'Enterprise' in segment_name
+                    is_strategic = 'Strat' in segment_name or 'Strategic' in segment_name
+                    
+                    # Determine region
+                    region = None
+                    if 'NAMER' in segment_name:
+                        region = 'NAMER'
+                    elif 'EMEA' in segment_name:
+                        region = 'EMEA'
+                    elif 'APAC' in segment_name:
+                        region = 'APAC'
+                    elif 'LATAM' in segment_name:
+                        region = 'LATAM'
+                    
+                    # Apply filters
+                    filters_applied = []
+                    
+                    # Filter by account score tier
+                    # STRATEGIC = Top 25% (largest accounts)
+                    # ENTERPRISE = Middle 50% (mid-tier accounts)
+                    if is_strategic:
+                        threshold = df_mapped['Account_Score'].quantile(0.75)
+                        df_mapped = df_mapped[df_mapped['Account_Score'] > threshold]
+                        filters_applied.append(f"Strategic tier (score > {threshold:.2f}, top 25%)")
+                    elif is_enterprise:
+                        lower = df_mapped['Account_Score'].quantile(0.25)
+                        upper = df_mapped['Account_Score'].quantile(0.75)
+                        df_mapped = df_mapped[(df_mapped['Account_Score'] >= lower) & (df_mapped['Account_Score'] <= upper)]
+                        filters_applied.append(f"Enterprise tier (score {lower:.2f} - {upper:.2f}, mid 50%)")
+                    
+                    # Filter by region (look for region-related columns)
+                    if region:
+                        region_cols = [c for c in df_mapped.columns if any(x in c.lower() for x in ['region', 'state', 'country', 'geo', 'billing'])]
+                        
+                        if region_cols:
+                            region_col = region_cols[0]  # Use first region column found
+                            
+                            # Define region mappings
+                            region_keywords = {
+                                'NAMER': ['US', 'USA', 'UNITED STATES', 'CANADA', 'CA', 'MEXICO', 'MX', 
+                                         'NY', 'TX', 'FL', 'IL', 'NORTH AMERICA'],
+                                'EMEA': ['UK', 'GB', 'GERMANY', 'DE', 'FRANCE', 'FR', 'SPAIN', 'ES', 
+                                        'ITALY', 'IT', 'NETHERLANDS', 'NL', 'EUROPE', 'EMEA', 
+                                        'MIDDLE EAST', 'AFRICA'],
+                                'APAC': ['CHINA', 'CN', 'JAPAN', 'JP', 'INDIA', 'IN', 'AUSTRALIA', 'AU',
+                                        'SINGAPORE', 'SG', 'KOREA', 'KR', 'ASIA', 'APAC', 'PACIFIC'],
+                                'LATAM': ['BRAZIL', 'BR', 'ARGENTINA', 'AR', 'CHILE', 'CL', 
+                                         'COLOMBIA', 'CO', 'LATIN AMERICA', 'LATAM']
+                            }
+                            
+                            keywords = region_keywords.get(region, [])
+                            if keywords:
+                                # Filter to accounts in this region
+                                df_mapped = df_mapped[df_mapped[region_col].astype(str).str.upper().str.contains('|'.join(keywords), na=False)]
+                                filters_applied.append(f"{region} region")
+                    
+                    filtered_count = len(df_mapped)
+                    
+                    st.markdown(f"""
+                        <p style='margin: 8px 0;'><strong>Filters Applied:</strong></p>
+                        <ul style='margin: 4px 0; padding-left: 20px;'>
+                            {''.join([f'<li>{f}</li>' for f in filters_applied])}
+                        </ul>
+                        <p style='margin: 12px 0 0 0;'>
+                            <strong style='color: #63b3ed;'>{filtered_count:,} accounts</strong> match this territory 
+                            (filtered from {original_count:,} total)
+                        </p>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    if filtered_count == 0:
+                        st.error("❌ No accounts match this territory's criteria. Please upload a different dataset or check your segment definition.")
+                        st.stop()
+                
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+                if st.button("✅ Confirm Mapping & Apply Territory Filter", type="primary"):
+                    st.session_state.accounts_df = df_mapped
+                    sync_to_current_draft()
+                    st.rerun()
+                
+                # Show data preview (only if accounts_df is set)
+                if st.session_state.accounts_df is not None and len(st.session_state.accounts_df) > 0:
+                    preview_df = st.session_state.accounts_df
+                    
+                    st.markdown("<div class='draft-card' style='background: linear-gradient(135deg, #22543d 0%, #1a2f23 100%); border-color: #48bb78;'>", unsafe_allow_html=True)
+                    st.markdown(f"<h3 style='color: #48bb78; margin-top: 0;'>✅ Successfully loaded {len(preview_df):,} accounts for this territory!</h3>", unsafe_allow_html=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    # Show preview
+                    st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
+                    st.markdown("<h3>📊 Data Preview (Filtered for Territory)</h3>", unsafe_allow_html=True)
+                    st.dataframe(preview_df.head(10), use_container_width=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    # Show summary stats
+                    st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        st.metric("Total Accounts", len(df))
+                        st.metric("Territory Accounts", f"{len(preview_df):,}")
                     with col2:
-                        st.metric("Avg Score", f"{df['Account_Score'].mean():.2f}")
+                        st.metric("Unique Owners", preview_df['Account_Owner_Name'].nunique())
                     with col3:
-                        st.metric("Max Score", f"{df['Account_Score'].max():.2f}")
+                        st.metric("Avg Account Score", f"{preview_df['Account_Score'].mean():.2f}")
+                    st.markdown("</div>", unsafe_allow_html=True)
                     
-                    st.dataframe(df.head(10), use_container_width=True)
+                    # Breakdown by Account Owner
+                    st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
+                    st.markdown("<h3>👥 Account Breakdown by Owner</h3>", unsafe_allow_html=True)
                     
-                    if st.button("➡️ Continue to AE Configuration", type="primary", use_container_width=True):
-                        st.session_state.stage = 'ae_config'
+                    owner_stats = preview_df.groupby('Account_Owner_Name').agg({
+                        'Account_ID': 'count',
+                        'Account_Score': ['mean', 'max', 'min', 'sum']
+                    }).round(2)
+                    
+                    owner_stats.columns = ['Account Count', 'Avg Score', 'Max Score', 'Min Score', 'Total Score']
+                    owner_stats = owner_stats.sort_values('Avg Score', ascending=False).reset_index()
+                    
+                    st.dataframe(owner_stats, use_container_width=True, hide_index=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    if st.button("➡️ Proceed to Draft Setup", type="primary"):
+                        st.session_state.stage = 'setup'
+                        sync_to_current_draft()
                         st.rerun()
-                else:
-                    st.error(f"❌ Missing required columns. Found: {list(df.columns)}")
-                    st.info(f"Required columns: {required_cols}")
-            except Exception as e:
-                st.error(f"Error reading file: {str(e)}")
-        
-        # Sample data option
-        st.markdown("---")
-        if st.button("🎲 Use Sample Data", use_container_width=True):
-            sample_df = pd.DataFrame({
-                'Account_ID': [f'ACC{str(i).zfill(4)}' for i in range(1, 101)],
-                'Account_Name': [f'Account {i}' for i in range(1, 101)],
-                'Account_Score': np.random.uniform(50, 100, 100).round(2)
-            })
-            st.session_state.accounts_df = sample_df
+                    
+        except Exception as e:
+            st.error(f"❌ Error loading file: {str(e)}")
+
+
+# Stage 2: Draft Setup
+elif st.session_state.stage == 'setup':
+    st.markdown("<h2>⚙️ Configure Your Draft</h2>", unsafe_allow_html=True)
+    
+    df = st.session_state.accounts_df
+    
+    # Safety check
+    if df is None or len(df) == 0:
+        st.error("❌ No account data loaded. Please go back to Upload stage.")
+        if st.button("← Back to Upload"):
+            st.session_state.stage = 'upload'
+            sync_to_current_draft()
             st.rerun()
+        st.stop()
     
-    # =============================================================================
-    # Stage 2: AE Configuration
-    # =============================================================================
+    col1, col2 = st.columns([1, 1])
     
-    elif st.session_state.stage == 'ae_config':
-        st.header("👥 Configure Account Executives")
+    with col1:
+        st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='margin-top: 0;'>👥 Select AEs</h3>", unsafe_allow_html=True)
         
+        # Get unique owners from data
+        if 'Account_Owner_Name' in df.columns:
+            unique_owners = sorted(df['Account_Owner_Name'].unique().tolist())
+        else:
+            st.error("❌ Account_Owner_Name column not found. Please re-upload and map columns correctly.")
+            st.stop()
+        
+        selected_aes = st.multiselect(
+            "Choose AEs for the draft",
+            unique_owners,
+            default=unique_owners[:5] if len(unique_owners) >= 5 else unique_owners
+        )
+        
+        # Or manually add AEs
+        st.markdown("<p style='color: #a0aec0; font-size: 14px; margin-top: 16px;'>Or add AE manually:</p>", unsafe_allow_html=True)
+        col_a, col_b = st.columns([3, 1])
+        with col_a:
+            manual_ae = st.text_input("AE name", label_visibility="collapsed")
+        with col_b:
+            if st.button("Add", use_container_width=True) and manual_ae:
+                if manual_ae not in selected_aes:
+                    selected_aes.append(manual_ae)
+                    st.success(f"Added {manual_ae}")
+        
+        st.session_state.ae_list = selected_aes
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='margin-top: 0;'>⚡ Draft Settings</h3>", unsafe_allow_html=True)
+        
+        draft_type = st.radio("Draft Type", ["Snake", "Linear"], index=0)
+        st.session_state.is_snake = (draft_type == "Snake")
+        
+        accounts_per_ae = st.number_input(
+            "Target accounts per AE",
+            min_value=1,
+            max_value=100,
+            value=20,
+            step=1
+        )
+        st.session_state.accounts_per_ae = accounts_per_ae
+        
+        st.markdown("<p style='color: #a0aec0; font-size: 14px; margin-top: 16px;'>Draft Order:</p>", unsafe_allow_html=True)
+        order_method = st.radio("Set order by:", ["Random", "Manual"], label_visibility="collapsed")
+        
+        if order_method == "Random":
+            if st.button("🎲 Randomize Order", use_container_width=True):
+                st.session_state.draft_order = np.random.permutation(selected_aes).tolist()
+                st.rerun()
+        else:
+            st.info("💡 Reorder AEs below - first in list picks first")
+            
+            # Manual reordering with selectboxes
+            if 'draft_order' not in st.session_state or set(st.session_state.draft_order) != set(selected_aes):
+                st.session_state.draft_order = selected_aes.copy()
+            
+            # Allow user to reorder by selecting position for each AE
+            new_order = st.session_state.draft_order.copy()
+            
+            for i in range(len(new_order)):
+                col_a, col_b = st.columns([1, 3])
+                with col_a:
+                    st.markdown(f"<p style='color: #4299e1; font-weight: 600; padding-top: 8px;'>Pick {i+1}</p>", unsafe_allow_html=True)
+                with col_b:
+                    # Get available AEs (those not already placed before this position)
+                    available_for_position = [ae for ae in selected_aes if ae not in new_order[:i]]
+                    if new_order[i] not in available_for_position:
+                        available_for_position.append(new_order[i])
+                    
+                    current_ae = st.selectbox(
+                        f"Position {i+1}",
+                        available_for_position,
+                        index=available_for_position.index(new_order[i]) if new_order[i] in available_for_position else 0,
+                        key=f"draft_pos_{i}",
+                        label_visibility="collapsed"
+                    )
+                    new_order[i] = current_ae
+            
+            st.session_state.draft_order = new_order
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Show draft order
+    if st.session_state.draft_order:
+        st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='margin-top: 0;'>📋 Draft Order</h3>", unsafe_allow_html=True)
+        
+        for i, ae in enumerate(st.session_state.draft_order, 1):
+            st.markdown(f"""
+                <div class='account-card'>
+                    <span style='color: #4299e1; font-weight: 700; font-size: 18px;'>{i}</span>
+                    <span style='color: #f7fafc; font-weight: 600; margin-left: 16px; font-size: 16px;'>{ae}</span>
+                </div>
+            """, unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Show summary
+    if selected_aes:
+        st.markdown("<div class='draft-card' style='background: linear-gradient(135deg, #2c5282 0%, #1e3a5f 100%);'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='margin-top: 0;'>📊 Draft Summary</h3>", unsafe_allow_html=True)
+        total_picks = len(selected_aes) * accounts_per_ae
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("AEs Drafting", len(selected_aes))
+        with col2:
+            st.metric("Accounts Per AE", accounts_per_ae)
+        with col3:
+            st.metric("Total Picks", total_picks)
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        if st.button("➡️ Proceed to Pre-Draft Cleanup", type="primary", disabled=len(selected_aes) == 0):
+            # Initialize AE books with current accounts
+            st.session_state.ae_books = {ae: [] for ae in selected_aes}
+            st.session_state.stage = 'cleanup'
+            sync_to_current_draft()
+            st.rerun()
+
+# Stage 3: Pre-Draft Cleanup
+elif st.session_state.stage == 'cleanup':
+    st.markdown("<h2>🧹 Pre-Draft Cleanup</h2>", unsafe_allow_html=True)
+    
+    df = st.session_state.accounts_df
+    
+    st.markdown("""
+    <div style='background: #2d3748; padding: 16px; border-radius: 8px; margin: 16px 0;'>
+        <p style='color: #e2e8f0; margin: 0;'><strong>Configure which accounts each AE keeps before the draft.</strong> AEs can hold onto their top accounts, and dropped accounts will be available in the draft.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Initialize keeper selections if not exists
+    if 'ae_keeper_selections' not in st.session_state:
+        st.session_state.ae_keeper_selections = {}
+    
+    st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin-top: 0;'>⚙️ Retention Settings</h3>", unsafe_allow_html=True)
+    
+    keep_accounts = st.number_input(
+        "Max accounts each AE can keep (pre-draft)",
+        min_value=0,
+        max_value=50,
+        value=10,
+        help="AEs will keep their top N accounts by Account Score"
+    )
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Show what each AE would keep with ability to substitute
+    st.markdown("<h3>📚 Account Selection by AE</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #a0aec0;'>Review and customize which accounts each AE keeps. By default, top accounts by score are selected.</p>", unsafe_allow_html=True)
+    
+    for ae in st.session_state.ae_list:
+        ae_all_accounts = df[df['Account_Owner_Name'] == ae].sort_values('Account_Score', ascending=False)
+        
+        # Initialize with top accounts if not already set
+        if ae not in st.session_state.ae_keeper_selections:
+            st.session_state.ae_keeper_selections[ae] = ae_all_accounts.head(keep_accounts)['Account_ID'].tolist()
+        
+        # Get current keepers
+        current_keepers = st.session_state.ae_keeper_selections[ae][:keep_accounts]
+        keeper_accounts = df[df['Account_ID'].isin(current_keepers)]
+        
+        avg_score = keeper_accounts['Account_Score'].mean() if len(keeper_accounts) > 0 else 0
+        
+        with st.expander(f"✏️ {ae} - Keeping {len(current_keepers)} accounts (Avg Score: {avg_score:.2f})"):
+            
+            # Show current keepers
+            st.markdown("**Current Keepers:**")
+            for idx, row in keeper_accounts.iterrows():
+                col_a, col_b, col_c = st.columns([4, 2, 1])
+                with col_a:
+                    st.markdown(f"<p style='margin: 4px 0;'>{row['Account_Name']}</p>", unsafe_allow_html=True)
+                with col_b:
+                    st.markdown(f"<span class='score-badge'>{row['Account_Score']:.2f}</span>", unsafe_allow_html=True)
+                with col_c:
+                    if st.button("🗑️", key=f"remove_{ae}_{row['Account_ID']}", help="Remove this account"):
+                        st.session_state.ae_keeper_selections[ae].remove(row['Account_ID'])
+                        st.rerun()
+            
+            # Allow adding accounts
+            if len(current_keepers) < keep_accounts:
+                st.markdown("---")
+                st.markdown(f"**Add Account** (can add {keep_accounts - len(current_keepers)} more):")
+                
+                # Get available accounts (owned by this AE but not already kept)
+                available_to_add = ae_all_accounts[~ae_all_accounts['Account_ID'].isin(current_keepers)]
+                
+                if len(available_to_add) > 0:
+                    add_account = st.selectbox(
+                        "Select account to add",
+                        options=[''] + available_to_add['Account_Name'].tolist(),
+                        key=f"add_select_{ae}"
+                    )
+                    
+                    if add_account:
+                        account_to_add = available_to_add[available_to_add['Account_Name'] == add_account].iloc[0]
+                        if st.button(f"➕ Add {add_account}", key=f"add_btn_{ae}"):
+                            st.session_state.ae_keeper_selections[ae].append(account_to_add['Account_ID'])
+                            st.rerun()
+        
+        # Store final keepers
+        st.session_state.ae_books[ae] = st.session_state.ae_keeper_selections[ae][:keep_accounts]
+    
+    # Calculate available accounts for draft
+    kept_account_ids = set()
+    for ae_accounts in st.session_state.ae_books.values():
+        kept_account_ids.update(ae_accounts)
+    
+    available_for_draft = df[~df['Account_ID'].isin(kept_account_ids)].copy()
+    
+    st.markdown("---")
+    st.markdown("<div class='draft-card' style='background: #2d3748;'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin-top: 0;'>📊 Cleanup Summary</h3>", unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Accounts Kept", len(kept_account_ids))
+    with col2:
+        st.metric("Available for Draft", len(available_for_draft))
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    if st.button("➡️ Continue to Blacklist & Draft Setup", type="primary"):
+        st.session_state.available_accounts = available_for_draft.sort_values('Account_Score', ascending=False).to_dict('records')
+        st.session_state.stage = 'blacklist'
+        sync_to_current_draft()
+        st.rerun()
+
+# Stage 3.5: Blacklist (new separate stage)
+elif st.session_state.stage == 'blacklist':
+    st.markdown("<h2>🚫 Blacklist Accounts</h2>", unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div style='background: #7c2d12; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #f6ad55;'>
+        <p style='color: #feebc8; margin: 0;'><strong>Review available accounts and blacklist any that should not be drafted</strong> (competitors, bad data quality, etc.)</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    available_df = pd.DataFrame(st.session_state.available_accounts)
+    
+    st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin-top: 0;'>📋 Available Accounts for Draft</h3>", unsafe_allow_html=True)
+    st.dataframe(
+        available_df[['Account_Name', 'Account_Score', 'Industry']].head(50),
+        use_container_width=True,
+        height=400
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='margin-top: 0;'>🚫 Add to Blacklist</h3>", unsafe_allow_html=True)
+        
+        blacklist_method = st.radio("Blacklist by:", ["Account Names (one per line)", "Select from list"])
+        
+        if blacklist_method == "Account Names (one per line)":
+            blacklist_input = st.text_area(
+                "Account names",
+                placeholder="Competitor Corp\nBad Data Inc\nJunk Account LLC",
+                height=150,
+                label_visibility="collapsed"
+            )
+            
+            if st.button("🚫 Blacklist These Accounts"):
+                if blacklist_input:
+                    blacklist_names = [name.strip() for name in blacklist_input.split('\n') if name.strip()]
+                    blacklist_ids = available_df[available_df['Account_Name'].isin(blacklist_names)]['Account_ID'].tolist()
+                    st.session_state.blacklisted_accounts = st.session_state.blacklisted_accounts.union(set(blacklist_ids))
+                    st.success(f"✅ Blacklisted {len(blacklist_ids)} accounts")
+                    st.rerun()
+        else:
+            # Select from multiselect
+            blacklist_select = st.multiselect(
+                "Select accounts to blacklist",
+                options=available_df['Account_Name'].tolist(),
+                label_visibility="collapsed"
+            )
+            
+            if st.button("🚫 Blacklist Selected") and blacklist_select:
+                blacklist_ids = available_df[available_df['Account_Name'].isin(blacklist_select)]['Account_ID'].tolist()
+                st.session_state.blacklisted_accounts = st.session_state.blacklisted_accounts.union(set(blacklist_ids))
+                st.success(f"✅ Blacklisted {len(blacklist_ids)} accounts")
+                st.rerun()
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='margin-top: 0;'>📊 Blacklist Summary</h3>", unsafe_allow_html=True)
+        st.metric("Blacklisted Accounts", len(st.session_state.blacklisted_accounts))
+        
+        if len(st.session_state.blacklisted_accounts) > 0:
+            st.markdown("**Blacklisted:**")
+            blacklisted_df = available_df[available_df['Account_ID'].isin(st.session_state.blacklisted_accounts)]
+            for _, row in blacklisted_df.iterrows():
+                col_x, col_y = st.columns([3, 1])
+                with col_x:
+                    st.markdown(f"<p style='font-size: 12px; margin: 2px 0;'>{row['Account_Name']}</p>", unsafe_allow_html=True)
+                with col_y:
+                    if st.button("✖️", key=f"unblock_{row['Account_ID']}", help="Remove from blacklist"):
+                        st.session_state.blacklisted_accounts.remove(row['Account_ID'])
+                        st.rerun()
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Remove blacklisted from available
+    final_available = available_df[~available_df['Account_ID'].isin(st.session_state.blacklisted_accounts)]
+    
+    st.markdown("---")
+    st.metric("📈 Final Available for Draft", len(final_available))
+    
+    if st.button("➡️ Start Draft", type="primary"):
+        st.session_state.available_accounts = final_available.sort_values('Account_Score', ascending=False).to_dict('records')
+        st.session_state.current_pick = 0
+        st.session_state.draft_picks = []
+        st.session_state.stage = 'draft'
+        sync_to_current_draft()
+        st.rerun()
+
+# Stage 4: Live Draft
+elif st.session_state.stage == 'draft':
+    st.markdown("<h2>🎯 Live Draft Board</h2>", unsafe_allow_html=True)
+    
+    total_rounds = st.session_state.accounts_per_ae
+    num_aes = len(st.session_state.draft_order)
+    
+    # Safety check - if no AEs, go back to setup
+    if num_aes == 0:
+        st.error("No AEs found! Please go back to setup.")
+        if st.button("← Back to Setup"):
+            st.session_state.stage = 'setup'
+            sync_to_current_draft()
+            st.rerun()
+        st.stop()
+    
+    total_picks = total_rounds * num_aes
+    current_pick = st.session_state.current_pick
+    
+    # Calculate current round and position
+    current_round = (current_pick // num_aes) + 1
+    pick_in_round = (current_pick % num_aes)
+    
+    # Determine current drafter (snake logic)
+    if st.session_state.is_snake and current_round % 2 == 0:
+        current_ae_index = num_aes - 1 - pick_in_round
+    else:
+        current_ae_index = pick_in_round
+    
+    current_ae = st.session_state.draft_order[current_ae_index] if current_pick < total_picks else None
+    
+    # Draft progress
+    progress = min(current_pick / total_picks, 1.0)
+    st.progress(progress, text=f"Pick {current_pick + 1} of {total_picks}")
+    
+    st.markdown(f"""
+        <div style='text-align: center; margin: 16px 0;'>
+            <span class='round-indicator'>Round {current_round} of {total_rounds}</span>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    if current_pick >= total_picks:
+        st.markdown("""
+            <div class='draft-card' style='background: linear-gradient(135deg, #22543d 0%, #1a2f23 100%); text-align: center; padding: 48px;'>
+                <h1 style='font-size: 48px; margin: 0;'>🎉</h1>
+                <h2 style='margin: 16px 0;'>Draft Complete!</h2>
+                <p style='color: #c6f6d5;'>Time to review your new territory assignments</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("➡️ View Results", type="primary"):
+            st.session_state.stage = 'results'
+            sync_to_current_draft()
+            st.rerun()
+    else:
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            st.markdown("""
-                <div class='draft-card'>
-                    <h3 style='margin-top: 0;'>Add AEs to the Draft</h3>
-                    <p style='margin: 0;'>Enter the names of Account Executives who will participate in this draft.</p>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            ae_input = st.text_input("AE Name", placeholder="Enter AE name...")
-            
-            col_a, col_b = st.columns(2)
-            with col_a:
-                if st.button("➕ Add AE", use_container_width=True):
-                    if ae_input and ae_input not in st.session_state.ae_list:
-                        st.session_state.ae_list.append(ae_input)
-                        st.session_state.ae_books[ae_input] = []
-                        st.session_state.ae_keeper_selections[ae_input] = []
-                        st.rerun()
-                    elif ae_input in st.session_state.ae_list:
-                        st.warning("AE already added!")
-        
-        with col2:
-            st.markdown("""
-                <div class='draft-card'>
-                    <h4 style='margin-top: 0;'>Draft Settings</h4>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            st.session_state.is_snake = st.checkbox("🐍 Snake Draft", value=st.session_state.is_snake, 
-                help="In snake draft, the order reverses each round")
-            
-            st.session_state.accounts_per_ae = st.number_input(
-                "Accounts per AE",
-                min_value=1,
-                max_value=50,
-                value=st.session_state.accounts_per_ae
-            )
-        
-        # Display current AEs
-        if st.session_state.ae_list:
-            st.markdown("---")
-            st.subheader(f"📋 Current AEs ({len(st.session_state.ae_list)})")
-            
-            for idx, ae in enumerate(st.session_state.ae_list):
-                col_x, col_y = st.columns([4, 1])
-                with col_x:
-                    st.markdown(f"""
-                        <div class='account-card'>
-                            <span style='font-weight: 600; color: #1e293b;'>{idx + 1}. {ae}</span>
-                        </div>
-                    """, unsafe_allow_html=True)
-                with col_y:
-                    if st.button("🗑️", key=f"remove_ae_{idx}"):
-                        st.session_state.ae_list.pop(idx)
-                        del st.session_state.ae_books[ae]
-                        del st.session_state.ae_keeper_selections[ae]
-                        st.rerun()
-            
-            st.markdown("---")
-            col_back, col_next = st.columns(2)
-            with col_back:
-                if st.button("⬅️ Back to Upload", use_container_width=True):
-                    st.session_state.stage = 'upload'
-                    st.rerun()
-            with col_next:
-                if len(st.session_state.ae_list) >= 2:
-                    if st.button("➡️ Continue to Keepers", type="primary", use_container_width=True):
-                        st.session_state.stage = 'keepers'
-                        st.rerun()
-                else:
-                    st.info("Add at least 2 AEs to continue")
-        else:
-            st.info("👆 Add your first AE to get started!")
-    
-    # =============================================================================
-    # Stage 3: Keeper Selection
-    # =============================================================================
-    
-    elif st.session_state.stage == 'keepers':
-        st.header("🔒 Keeper Selection")
-        
-        st.markdown("""
-            <div class='draft-card'>
-                <p style='margin: 0; font-size: 16px;'>
-                    Each AE can select accounts they want to keep from their existing book.
-                    Keepers will be automatically assigned and won't be available in the draft pool.
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        # Randomize draft order button
-        if not st.session_state.draft_order:
-            if st.button("🎲 Randomize Draft Order", type="primary", use_container_width=True):
-                st.session_state.draft_order = st.session_state.ae_list.copy()
-                np.random.shuffle(st.session_state.draft_order)
-                st.success("Draft order randomized!")
-                st.rerun()
-        else:
-            st.success("✅ Draft order set!")
-            st.markdown("**Draft Order:**")
-            for idx, ae in enumerate(st.session_state.draft_order):
-                st.markdown(f"{idx + 1}. **{ae}**")
-        
-        st.markdown("---")
-        
-        # Keeper selection for each AE
-        for ae in st.session_state.ae_list:
-            with st.expander(f"🔒 {ae}'s Keepers", expanded=False):
-                # Search/filter accounts
-                search_term = st.text_input(f"Search accounts for {ae}", key=f"search_{ae}")
-                
-                if search_term:
-                    filtered_accounts = st.session_state.accounts_df[
-                        st.session_state.accounts_df['Account_Name'].str.contains(search_term, case=False, na=False)
-                    ]
-                else:
-                    filtered_accounts = st.session_state.accounts_df.head(20)
-                
-                # Multi-select for keepers
-                selected_keepers = st.multiselect(
-                    f"Select keepers for {ae}",
-                    options=filtered_accounts['Account_ID'].tolist(),
-                    format_func=lambda x: st.session_state.accounts_df[
-                        st.session_state.accounts_df['Account_ID'] == x
-                    ]['Account_Name'].iloc[0],
-                    key=f"keepers_{ae}",
-                    default=st.session_state.ae_keeper_selections.get(ae, [])
-                )
-                
-                st.session_state.ae_keeper_selections[ae] = selected_keepers
-                
-                if selected_keepers:
-                    st.markdown(f"**Selected: {len(selected_keepers)} keepers**")
-        
-        st.markdown("---")
-        col_back, col_next = st.columns(2)
-        with col_back:
-            if st.button("⬅️ Back to AE Config", use_container_width=True):
-                st.session_state.stage = 'ae_config'
-                st.rerun()
-        with col_next:
-            if st.button("➡️ Start Draft", type="primary", use_container_width=True):
-                # Process keepers
-                for ae, keeper_ids in st.session_state.ae_keeper_selections.items():
-                    st.session_state.ae_books[ae].extend(keeper_ids)
-                    st.session_state.blacklisted_accounts.update(keeper_ids)
-                
-                # Initialize available accounts
-                st.session_state.available_accounts = st.session_state.accounts_df[
-                    ~st.session_state.accounts_df['Account_ID'].isin(st.session_state.blacklisted_accounts)
-                ].sort_values('Account_Score', ascending=False).to_dict('records')
-                
-                st.session_state.stage = 'draft'
-                st.session_state.current_pick = 0
-                st.rerun()
-    
-    # =============================================================================
-    # Stage 4: Live Draft
-    # =============================================================================
-    
-    elif st.session_state.stage == 'draft':
-        st.header("🎯 Live Draft")
-        
-        # Calculate draft progress
-        num_aes = len(st.session_state.draft_order)
-        accounts_per_ae = st.session_state.accounts_per_ae
-        
-        # Account for keepers
-        total_keeper_picks = sum(len(keepers) for keepers in st.session_state.ae_keeper_selections.values())
-        remaining_picks_needed = (num_aes * accounts_per_ae) - total_keeper_picks
-        total_picks = remaining_picks_needed
-        
-        current_pick = st.session_state.current_pick
-        
-        # Check if draft is complete
-        if current_pick >= total_picks:
-            st.session_state.stage = 'results'
-            st.rerun()
-        
-        # Calculate current picker
-        current_round = (current_pick // num_aes) + 1
-        pick_in_round = (current_pick % num_aes)
-        
-        if st.session_state.is_snake and current_round % 2 == 0:
-            current_ae_index = num_aes - 1 - pick_in_round
-        else:
-            current_ae_index = pick_in_round
-        
-        current_ae = st.session_state.draft_order[current_ae_index]
-        
-        # Progress bar
-        progress = current_pick / total_picks if total_picks > 0 else 0
-        st.progress(progress)
-        st.markdown(f"**Progress:** Pick {current_pick + 1} of {total_picks} ({progress * 100:.1f}%)")
-        
-        st.markdown("---")
-        
-        # Two column layout
-        col1, col2 = st.columns([3, 2])
-        
-        with col1:
-            # On the clock
+            # On the clock card
             st.markdown(f"""
                 <div class='on-clock'>
-                    <h3 style='margin-top: 0;'>⏰ On The Clock</h3>
-                    <h2 style='color: #10b981; margin: 8px 0;'>{current_ae}</h2>
-                    <p style='margin: 0;'>Round {current_round} | Pick {pick_in_round + 1}</p>
+                    <h3 style='margin: 0 0 8px 0; color: #48bb78;'>🏈 ON THE CLOCK</h3>
+                    <h2 style='margin: 0; font-size: 32px;'>{current_ae}</h2>
+                    <p style='color: #a0aec0; margin: 8px 0 0 0;'>Round {current_round}, Pick {pick_in_round + 1}</p>
                 </div>
             """, unsafe_allow_html=True)
-            
-            st.markdown("<br>", unsafe_allow_html=True)
             
             # Available accounts
             st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
-            st.markdown("<h3 style='margin-top: 0;'>🎯 Available Accounts</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='margin-top: 0;'>📊 Top Available Accounts</h3>", unsafe_allow_html=True)
             
-            if len(st.session_state.available_accounts) > 0:
-                available_df = pd.DataFrame(st.session_state.available_accounts)
-                
-                # Search filter
-                search_query = st.text_input("🔍 Search accounts", placeholder="Type to filter...")
-                if search_query:
-                    available_df = available_df[
-                        available_df['Account_Name'].str.contains(search_query, case=False, na=False)
-                    ]
-                
-                # Draft button
-                selected_account = st.selectbox(
-                    f"Select account for {current_ae}",
-                    options=range(len(available_df)),
-                    format_func=lambda x: f"{available_df.iloc[x]['Account_Name']} ({available_df.iloc[x]['Account_Score']:.2f})"
+            available_df = pd.DataFrame(st.session_state.available_accounts)
+            
+            if len(available_df) > 0:
+                # Account selection
+                selected_account_name = st.selectbox(
+                    "Select account to draft:",
+                    options=available_df['Account_Name'].tolist(),
+                    index=0,
+                    label_visibility="collapsed"
                 )
                 
-                col_draft, col_auto = st.columns(2)
+                selected_account = available_df[available_df['Account_Name'] == selected_account_name].iloc[0]
                 
-                with col_draft:
-                    if st.button("✅ Make Pick", type="primary", use_container_width=True):
-                        picked_account = available_df.iloc[selected_account]
-                        
+                # Show selected account card
+                st.markdown(f"""
+                    <div class='account-card' style='background: #2d3748; padding: 20px; margin: 16px 0;'>
+                        <h4 style='margin: 0 0 8px 0; color: #f7fafc;'>{selected_account['Account_Name']}</h4>
+                        <span class='score-badge'>Score: {selected_account['Account_Score']:.2f}</span>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                # Action buttons
+                col_a, col_b, col_c = st.columns(3)
+                with col_a:
+                    if st.button("✅ Draft This Account", type="primary", use_container_width=True):
                         # Record the pick
                         st.session_state.draft_picks.append({
                             'pick_number': current_pick + 1,
                             'round': current_round,
                             'ae': current_ae,
-                            'account_name': picked_account['Account_Name'],
-                            'account_id': picked_account['Account_ID'],
-                            'account_score': picked_account['Account_Score']
+                            'account_name': selected_account['Account_Name'],
+                            'account_id': selected_account['Account_ID'],
+                            'account_score': selected_account['Account_Score']
                         })
                         
-                        # Update AE's book
-                        st.session_state.ae_books[current_ae].append(picked_account['Account_ID'])
+                        st.session_state.ae_books[current_ae].append(selected_account['Account_ID'])
                         
-                        # Remove from available
                         st.session_state.available_accounts = [
                             acc for acc in st.session_state.available_accounts 
-                            if acc['Account_ID'] != picked_account['Account_ID']
+                            if acc['Account_ID'] != selected_account['Account_ID']
                         ]
                         
                         st.session_state.current_pick += 1
+                        sync_to_current_draft()
                         st.rerun()
                 
-                with col_auto:
-                    if st.button("⚡ Auto-Draft Remaining", use_container_width=True):
-                        # Auto-draft all remaining picks
+                with col_b:
+                    if st.button("⚡ Auto-Draft Best", use_container_width=True):
+                        best_account = available_df.iloc[0]
+                        
+                        st.session_state.draft_picks.append({
+                            'pick_number': current_pick + 1,
+                            'round': current_round,
+                            'ae': current_ae,
+                            'account_name': best_account['Account_Name'],
+                            'account_id': best_account['Account_ID'],
+                            'account_score': best_account['Account_Score']
+                        })
+                        
+                        st.session_state.ae_books[current_ae].append(best_account['Account_ID'])
+                        
+                        st.session_state.available_accounts = [
+                            acc for acc in st.session_state.available_accounts 
+                            if acc['Account_ID'] != best_account['Account_ID']
+                        ]
+                        
+                        st.session_state.current_pick += 1
+                        sync_to_current_draft()
+                        st.rerun()
+                
+                with col_c:
+                    if current_pick > 0 and st.button("↩️ Undo Pick", use_container_width=True):
+                        last_pick = st.session_state.draft_picks.pop()
+                        st.session_state.ae_books[last_pick['ae']].remove(last_pick['account_id'])
+                        
+                        returned_account = st.session_state.accounts_df[
+                            st.session_state.accounts_df['Account_ID'] == last_pick['account_id']
+                        ].iloc[0].to_dict()
+                        st.session_state.available_accounts.insert(0, returned_account)
+                        st.session_state.available_accounts = sorted(
+                            st.session_state.available_accounts,
+                            key=lambda x: x['Account_Score'],
+                            reverse=True
+                        )
+                        
+                        st.session_state.current_pick -= 1
+                        sync_to_current_draft()
+                        st.rerun()
+                
+                # Auto-complete rest of draft button
+                st.markdown("---")
+                remaining_picks = total_picks - current_pick
+                st.markdown(f"<p style='color: #a0aec0; text-align: center;'>{remaining_picks} picks remaining</p>", unsafe_allow_html=True)
+                
+                if st.button(f"🤖 Auto-Complete Remaining {remaining_picks} Picks", use_container_width=True, type="secondary"):
+                    # Auto-draft all remaining picks
+                    with st.spinner('Auto-drafting remaining picks...'):
                         temp_pick = current_pick
                         temp_available = st.session_state.available_accounts.copy()
                         
@@ -1344,15 +1844,16 @@ elif st.session_state.view_mode == 'draft_flow':
                         
                         st.session_state.available_accounts = temp_available
                         st.session_state.current_pick = temp_pick
-                        st.rerun()
+                    
+                    st.rerun()
                 
                 # Show available accounts list
-                st.markdown("<h4 style='margin: 24px 0 12px 0;'>Top Available</h4>", unsafe_allow_html=True)
+                st.markdown("<h4 style='margin: 24px 0 12px 0;'>Available Accounts</h4>", unsafe_allow_html=True)
                 for idx, row in available_df.head(15).iterrows():
                     st.markdown(f"""
                         <div class='account-card'>
                             <div style='display: flex; justify-content: space-between; align-items: center;'>
-                                <span style='color: #1e293b; font-weight: 600;'>{row['Account_Name']}</span>
+                                <span style='color: #f7fafc; font-weight: 600;'>{row['Account_Name']}</span>
                                 <span class='score-badge'>{row['Account_Score']:.2f}</span>
                             </div>
                         </div>
@@ -1371,15 +1872,15 @@ elif st.session_state.view_mode == 'draft_flow':
             for pick in recent_picks:
                 st.markdown(f"""
                     <div class='pick-card'>
-                        <span class='pick-number-badge'>PICK {pick['pick_number']}</span>
-                        <p style='margin: 8px 0 4px 0; color: #1e293b; font-weight: 600;'>{pick['ae']}</p>
-                        <p style='margin: 4px 0; color: #475569; font-size: 14px;'>{pick['account_name']}</p>
+                        <p style='margin: 0; color: #4299e1; font-weight: 600; font-size: 12px;'>PICK {pick['pick_number']}</p>
+                        <p style='margin: 4px 0; color: #f7fafc; font-weight: 600;'>{pick['ae']}</p>
+                        <p style='margin: 4px 0 0 0; color: #e2e8f0; font-size: 14px;'>{pick['account_name']}</p>
                         <span class='score-badge' style='font-size: 12px; margin-top: 4px;'>{pick['account_score']:.2f}</span>
                     </div>
                 """, unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
             
-            # Current AE's book
+            # Current AE's book (only show if draft is ongoing)
             if current_ae and current_ae in st.session_state.ae_books:
                 st.markdown("<div class='draft-card'>", unsafe_allow_html=True)
                 st.markdown(f"<h3 style='margin-top: 0;'>{current_ae}'s Book</h3>", unsafe_allow_html=True)
@@ -1398,123 +1899,107 @@ elif st.session_state.view_mode == 'draft_flow':
                 if len(ae_book_df) > 0:
                     for _, row in ae_book_df.iterrows():
                         st.markdown(f"""
-                            <div style='background: #faf5ff; padding: 10px; border-radius: 8px; margin: 6px 0; border: 1px solid #e9d5ff;'>
+                            <div style='background: #232936; padding: 8px; border-radius: 6px; margin: 4px 0;'>
                                 <div style='display: flex; justify-content: space-between;'>
-                                    <span style='color: #475569; font-size: 13px;'>{row['Account_Name']}</span>
-                                    <span style='color: #8b5cf6; font-weight: 700; font-size: 13px;'>{row['Account_Score']:.1f}</span>
+                                    <span style='color: #e2e8f0; font-size: 13px;'>{row['Account_Name']}</span>
+                                    <span style='color: #4299e1; font-weight: 600; font-size: 13px;'>{row['Account_Score']:.1f}</span>
                                 </div>
                             </div>
                         """, unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
+            
+# Stage 5: Results & Reporting
+elif st.session_state.stage == 'results':
+    st.header("📊 Draft Results")
     
-    # =============================================================================
-    # Stage 5: Results & Reporting
-    # =============================================================================
+    df = st.session_state.accounts_df
     
-    elif st.session_state.stage == 'results':
-        st.header("🏆 Draft Results")
+    # Create results dataframe
+    results = []
+    for ae in st.session_state.ae_list:
+        ae_account_ids = st.session_state.ae_books[ae]
+        ae_accounts = df[df['Account_ID'].isin(ae_account_ids)]
         
-        df = st.session_state.accounts_df
+        results.append({
+            'AE': ae,
+            'Total Accounts': len(ae_accounts),
+            'Avg Account Score': ae_accounts['Account_Score'].mean() if len(ae_accounts) > 0 else 0,
+            'Total Score': ae_accounts['Account_Score'].sum() if len(ae_accounts) > 0 else 0,
+            'Top Account Score': ae_accounts['Account_Score'].max() if len(ae_accounts) > 0 else 0
+        })
+    
+    results_df = pd.DataFrame(results).sort_values('Avg Account Score', ascending=False)
+    
+    st.subheader("🏆 Final Standings")
+    st.dataframe(results_df, use_container_width=True)
+    
+    # Individual AE books
+    st.subheader("📚 Account Books by AE")
+    
+    for ae in st.session_state.ae_list:
+        ae_account_ids = st.session_state.ae_books[ae]
+        ae_accounts = df[df['Account_ID'].isin(ae_account_ids)].sort_values('Account_Score', ascending=False)
         
-        # Create results dataframe
-        results = []
+        with st.expander(f"{ae} - {len(ae_accounts)} accounts | Avg Score: {ae_accounts['Account_Score'].mean():.2f}"):
+            st.dataframe(
+                ae_accounts[['Account_Name', 'Account_Score']].reset_index(drop=True),
+                use_container_width=True
+            )
+    
+    # Draft history
+    st.subheader("📜 Complete Draft History")
+    if st.session_state.draft_picks:
+        draft_history_df = pd.DataFrame(st.session_state.draft_picks)
+        st.dataframe(draft_history_df, use_container_width=True)
+    
+    # Export results
+    st.subheader("💾 Export Results")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Create export CSV
+        export_data = []
         for ae in st.session_state.ae_list:
             ae_account_ids = st.session_state.ae_books[ae]
             ae_accounts = df[df['Account_ID'].isin(ae_account_ids)]
             
-            results.append({
-                'AE': ae,
-                'Total Accounts': len(ae_accounts),
-                'Avg Account Score': ae_accounts['Account_Score'].mean() if len(ae_accounts) > 0 else 0,
-                'Total Score': ae_accounts['Account_Score'].sum() if len(ae_accounts) > 0 else 0,
-                'Top Account Score': ae_accounts['Account_Score'].max() if len(ae_accounts) > 0 else 0
-            })
+            for _, row in ae_accounts.iterrows():
+                export_data.append({
+                    'Account_ID': row['Account_ID'],
+                    'Account_Name': row['Account_Name'],
+                    'New_Owner': ae,
+                    'Account_Score': row['Account_Score']
+                })
         
-        results_df = pd.DataFrame(results).sort_values('Avg Account Score', ascending=False)
+        export_df = pd.DataFrame(export_data)
+        csv = export_df.to_csv(index=False)
         
-        # Winner announcement
-        winner = results_df.iloc[0]
-        st.markdown(f"""
-            <div class='draft-card' style='background: linear-gradient(135deg, #faf5ff 0%, #ffffff 100%); border: 2px solid #8b5cf6;'>
-                <h2 style='margin: 0; color: #8b5cf6;'>🎉 Champion: {winner['AE']}</h2>
-                <p style='margin: 8px 0 0 0; font-size: 18px;'>Average Score: <strong>{winner['Avg Account Score']:.2f}</strong></p>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        st.subheader("📊 Final Standings")
-        st.dataframe(results_df, use_container_width=True)
-        
-        # Individual AE books
-        st.markdown("---")
-        st.subheader("📚 Account Books by AE")
-        
-        for ae in st.session_state.ae_list:
-            ae_account_ids = st.session_state.ae_books[ae]
-            ae_accounts = df[df['Account_ID'].isin(ae_account_ids)].sort_values('Account_Score', ascending=False)
-            
-            with st.expander(f"📖 {ae} - {len(ae_accounts)} accounts | Avg Score: {ae_accounts['Account_Score'].mean():.2f}", expanded=False):
-                st.dataframe(
-                    ae_accounts[['Account_Name', 'Account_Score']].reset_index(drop=True),
-                    use_container_width=True
-                )
-        
-        # Draft history
-        st.markdown("---")
-        st.subheader("📜 Complete Draft History")
+        st.download_button(
+            label="📥 Download Assignment CSV",
+            data=csv,
+            file_name=f"draft_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
+    
+    with col2:
+        # Download draft history
         if st.session_state.draft_picks:
-            draft_history_df = pd.DataFrame(st.session_state.draft_picks)
-            st.dataframe(draft_history_df, use_container_width=True)
-        
-        # Export results
-        st.markdown("---")
-        st.subheader("💾 Export Results")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Create export CSV
-            export_data = []
-            for ae in st.session_state.ae_list:
-                ae_account_ids = st.session_state.ae_books[ae]
-                ae_accounts = df[df['Account_ID'].isin(ae_account_ids)]
-                
-                for _, row in ae_accounts.iterrows():
-                    export_data.append({
-                        'Account_ID': row['Account_ID'],
-                        'Account_Name': row['Account_Name'],
-                        'New_Owner': ae,
-                        'Account_Score': row['Account_Score']
-                    })
-            
-            export_df = pd.DataFrame(export_data)
-            csv = export_df.to_csv(index=False)
-            
+            draft_csv = pd.DataFrame(st.session_state.draft_picks).to_csv(index=False)
             st.download_button(
-                label="📥 Download Assignment CSV",
-                data=csv,
-                file_name=f"draft_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-                use_container_width=True
+                label="📥 Download Draft History",
+                data=draft_csv,
+                file_name=f"draft_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv"
             )
-        
-        with col2:
-            # Download draft history
-            if st.session_state.draft_picks:
-                draft_csv = pd.DataFrame(st.session_state.draft_picks).to_csv(index=False)
-                st.download_button(
-                    label="📥 Download Draft History",
-                    data=draft_csv,
-                    file_name=f"draft_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
-        
-        st.markdown("---")
-        if st.button("🔄 Start New Draft", use_container_width=True):
-            st.session_state.view_mode = 'territory_planning'
-            st.rerun()
+    
+    st.markdown("---")
+    if st.button("🔄 Start New Draft"):
+        # Reset everything
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
+
 
 # Save draft state before page closes
 sync_to_current_draft()
