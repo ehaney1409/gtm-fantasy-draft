@@ -29,8 +29,16 @@ st.markdown("""
         padding: 16px 0;
     }
     
+    .logo-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 32px;
+        padding: 24px 0;
+    }
+    
     .logo-container img {
-        height: 72px !important;
+        height: 120px !important;
         width: auto;
     }
     
@@ -123,32 +131,36 @@ st.markdown("""
         color: #475569 !important;
     }
     
-    /* Buttons */
+    /* LIGHT BUTTONS */
     .stButton button {
-        background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
-        color: white !important;
-        border-radius: 10px;
-        font-weight: 600;
-        padding: 12px 24px;
-        border: none;
-        box-shadow: 0 2px 8px 0 rgba(139, 92, 246, 0.3);
-        transition: all 0.2s ease;
+        background: #ffffff !important;
+        color: #475569 !important;
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        padding: 12px 24px !important;
+        border: 2px solid #e2e8f0 !important;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06) !important;
+        transition: all 0.2s ease !important;
     }
     
     .stButton button:hover {
-        background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
-        box-shadow: 0 4px 12px 0 rgba(139, 92, 246, 0.4);
-        transform: translateY(-1px);
+        background: #f8fafc !important;
+        border-color: #8b5cf6 !important;
+        box-shadow: 0 2px 6px 0 rgba(139, 92, 246, 0.15) !important;
+        transform: translateY(-1px) !important;
     }
     
     .stButton button[kind="primary"] {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        box-shadow: 0 2px 8px 0 rgba(16, 185, 129, 0.3);
+        background: #8b5cf6 !important;
+        color: white !important;
+        border-color: #8b5cf6 !important;
+        box-shadow: 0 2px 8px 0 rgba(139, 92, 246, 0.3) !important;
     }
     
     .stButton button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #059669 0%, #047857 100%);
-        box-shadow: 0 4px 12px 0 rgba(16, 185, 129, 0.4);
+        background: #7c3aed !important;
+        border-color: #7c3aed !important;
+        box-shadow: 0 4px 12px 0 rgba(139, 92, 246, 0.4) !important;
     }
     
     .stButton button[kind="secondary"] {
@@ -444,29 +456,19 @@ try:
             logo_data = base64.b64encode(f.read()).decode()
         st.markdown(f"""
             <div class='logo-container'>
-                <img src='data:image/jpeg;base64,{logo_data}' alt='Kittil.io Logo'>
-                <div>
-                    <div class='logo-text'>GTM Fantasy Draft</div>
-                    <div class='logo-subtitle'>Territory planning reimagined</div>
-                </div>
+                <img src='data:image/jpeg;base64,{logo_data}' alt='Kittil.io'>
             </div>
         """, unsafe_allow_html=True)
     else:
         st.markdown("""
             <div class='logo-container'>
-                <div>
-                    <div class='logo-text'>🐱 GTM Fantasy Draft</div>
-                    <div class='logo-subtitle'>Territory planning reimagined</div>
-                </div>
+                <h1 style='font-size: 48px; color: #8b5cf6; margin: 0;'>🐱 Kittil.io</h1>
             </div>
         """, unsafe_allow_html=True)
 except:
     st.markdown("""
         <div class='logo-container'>
-            <div>
-                <div class='logo-text'>🐱 GTM Fantasy Draft</div>
-                <div class='logo-subtitle'>Territory planning reimagined</div>
-            </div>
+            <h1 style='font-size: 48px; color: #8b5cf6; margin: 0;'>🐱 Kittil.io</h1>
         </div>
     """, unsafe_allow_html=True)
 
@@ -1650,6 +1652,36 @@ elif st.session_state.stage == 'draft':
     total_rounds = st.session_state.accounts_per_ae
     num_aes = len(st.session_state.draft_order)
     
+    # Add draft board styles
+    st.markdown("""
+    <style>
+    .draft-cell {
+        background: #ffffff;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 12px;
+        min-height: 80px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        transition: all 0.2s ease;
+        text-align: center;
+    }
+    
+    .draft-cell.picked {
+        background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);
+        border-color: #8b5cf6;
+    }
+    
+    .draft-cell.current {
+        background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+        border-color: #10b981;
+        border-width: 3px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     # Safety check - if no AEs, go back to setup
     if num_aes == 0:
         st.error("No AEs found! Please go back to setup.")
@@ -1683,6 +1715,61 @@ elif st.session_state.stage == 'draft':
             <span class='round-indicator'>Round {current_round} of {total_rounds}</span>
         </div>
     """, unsafe_allow_html=True)
+    
+    # SLEEPER-STYLE DRAFT BOARD
+    st.markdown("<h3 style='margin: 24px 0 16px 0;'>📋 Draft Board</h3>", unsafe_allow_html=True)
+    
+    # Create draft board grid
+    draft_picks_dict = {pick['pick_number']: pick for pick in st.session_state.draft_picks}
+    
+    # Display draft board by round
+    for round_num in range(1, min(total_rounds + 1, 11)):  # Show first 10 rounds
+        st.markdown(f"<h4 style='margin: 16px 0 8px 0;'>Round {round_num}</h4>", unsafe_allow_html=True)
+        
+        cols = st.columns(num_aes)
+        
+        for pos in range(num_aes):
+            # Calculate pick number based on snake draft
+            if st.session_state.is_snake and round_num % 2 == 0:
+                pick_num = ((round_num - 1) * num_aes) + (num_aes - pos)
+            else:
+                pick_num = ((round_num - 1) * num_aes) + (pos + 1)
+            
+            ae_name = st.session_state.draft_order[pos]
+            
+            with cols[pos]:
+                # Check if this pick has been made
+                if pick_num in draft_picks_dict:
+                    pick = draft_picks_dict[pick_num]
+                    # Picked cell
+                    st.markdown(f"""
+                        <div class='draft-cell picked'>
+                            <p style='margin: 0; font-size: 10px; color: #8b5cf6; font-weight: 600;'>#{pick_num}</p>
+                            <p style='margin: 4px 0; font-size: 12px; font-weight: 600; color: #1e293b;'>{pick['ae'][:15]}</p>
+                            <p style='margin: 4px 0; font-size: 11px; color: #64748b;'>{pick['account_name'][:18]}</p>
+                            <span style='font-size: 10px; color: #8b5cf6; font-weight: 600;'>{pick['account_score']:.1f}</span>
+                        </div>
+                    """, unsafe_allow_html=True)
+                elif pick_num == current_pick + 1:
+                    # Current pick (on the clock)
+                    st.markdown(f"""
+                        <div class='draft-cell current'>
+                            <p style='margin: 0; font-size: 10px; color: #10b981; font-weight: 700;'>#{pick_num} ⏰</p>
+                            <p style='margin: 4px 0; font-size: 12px; font-weight: 700; color: #059669;'>{ae_name[:15]}</p>
+                            <p style='margin: 4px 0; font-size: 11px; color: #10b981; font-weight: 600;'>ON CLOCK</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    # Future pick (empty)
+                    st.markdown(f"""
+                        <div class='draft-cell'>
+                            <p style='margin: 0; font-size: 10px; color: #94a3b8; font-weight: 600;'>#{pick_num}</p>
+                            <p style='margin: 4px 0; font-size: 12px; font-weight: 600; color: #cbd5e1;'>{ae_name[:15]}</p>
+                            <p style='margin: 4px 0; font-size: 11px; color: #e2e8f0;'>-</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
     
     if current_pick >= total_picks:
         st.markdown("""
@@ -1725,7 +1812,7 @@ elif st.session_state.stage == 'draft':
                     label_visibility="collapsed"
                 )
                 
-                selected_account = available_df[available_df['Account_Name'] == selected_account_name].iloc[0]
+                selected_account = available_df[available_df['Account_Name'] == selected_account_name].iloc[0].to_dict()
                 
                 # Show selected account card
                 st.markdown(f"""
@@ -1844,6 +1931,7 @@ elif st.session_state.stage == 'draft':
                         
                         st.session_state.available_accounts = temp_available
                         st.session_state.current_pick = temp_pick
+                        sync_to_current_draft()
                     
                     st.rerun()
                 
