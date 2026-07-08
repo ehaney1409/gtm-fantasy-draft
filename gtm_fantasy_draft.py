@@ -29,6 +29,8 @@ if 'available_accounts' not in st.session_state:
     st.session_state.available_accounts = []
 if 'ae_books' not in st.session_state:
     st.session_state.ae_books = {}
+if 'blacklisted_accounts' not in st.session_state:
+    st.session_state.blacklisted_accounts = set()
 if 'ae_keeper_selections' not in st.session_state:
     st.session_state.ae_keeper_selections = {}
 if 'accounts_per_ae' not in st.session_state:
@@ -221,8 +223,68 @@ elif st.session_state.stage == 'setup':
 elif st.session_state.stage == 'cleanup':
     st.header("🧹 Step 3: Pre-Draft Cleanup")
 
-    df = st.session_state.accounts_df
+    df_full = st.session_state.accounts_df
 
+    # -------------------------------------------------------------------
+    # Blacklist accounts (competitors, bad data, etc.) before anything
+    # else happens — these accounts are removed from consideration
+    # entirely, so they can't be kept OR drafted.
+    # -------------------------------------------------------------------
+    st.subheader("🚫 Blacklist Accounts")
+    st.markdown("Remove accounts that should not be part of this draft at all (competitors, bad data quality, etc.) before setting keepers.")
+
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        blacklist_method = st.radio(
+            "Blacklist by:",
+            ["Account Names (one per line)", "Select from list"],
+            horizontal=True
+        )
+
+        if blacklist_method == "Account Names (one per line)":
+            blacklist_input = st.text_area(
+                "Account names",
+                placeholder="Competitor Corp\nBad Data Inc\nJunk Account LLC",
+                height=100,
+                label_visibility="collapsed"
+            )
+            if st.button("🚫 Blacklist These Accounts"):
+                if blacklist_input:
+                    names = [n.strip() for n in blacklist_input.split('\n') if n.strip()]
+                    ids_to_add = df_full[df_full['Account_Name'].isin(names)]['Account_ID'].tolist()
+                    st.session_state.blacklisted_accounts = st.session_state.blacklisted_accounts.union(set(ids_to_add))
+                    st.success(f"✅ Blacklisted {len(ids_to_add)} accounts")
+                    st.rerun()
+        else:
+            blacklist_select = st.multiselect(
+                "Select accounts to blacklist",
+                options=sorted(df_full['Account_Name'].tolist()),
+                label_visibility="collapsed"
+            )
+            if st.button("🚫 Blacklist Selected") and blacklist_select:
+                ids_to_add = df_full[df_full['Account_Name'].isin(blacklist_select)]['Account_ID'].tolist()
+                st.session_state.blacklisted_accounts = st.session_state.blacklisted_accounts.union(set(ids_to_add))
+                st.success(f"✅ Blacklisted {len(ids_to_add)} accounts")
+                st.rerun()
+
+    with col2:
+        st.metric("Blacklisted Accounts", len(st.session_state.blacklisted_accounts))
+        if st.session_state.blacklisted_accounts:
+            blacklisted_df = df_full[df_full['Account_ID'].isin(st.session_state.blacklisted_accounts)]
+            for _, row in blacklisted_df.iterrows():
+                col_x, col_y = st.columns([3, 1])
+                with col_x:
+                    st.caption(row['Account_Name'])
+                with col_y:
+                    if st.button("✖️", key=f"unblock_{row['Account_ID']}", help="Remove from blacklist"):
+                        st.session_state.blacklisted_accounts.remove(row['Account_ID'])
+                        st.rerun()
+
+    # Everything below operates only on non-blacklisted accounts
+    df = df_full[~df_full['Account_ID'].isin(st.session_state.blacklisted_accounts)].copy()
+
+    st.markdown("---")
     st.markdown("Configure which accounts each AE keeps before the draft. AEs keep their top accounts, and everything else becomes available in the draft pool.")
 
     keep_accounts = st.number_input(
