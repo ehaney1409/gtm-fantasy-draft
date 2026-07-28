@@ -38,6 +38,14 @@ if 'is_snake' not in st.session_state:
 if 'filter_tier' not in st.session_state:
     st.session_state.filter_tier = 'all'
 
+# AE SALESFORCE ID MAPPING
+AE_SFDC_IDS = {
+    'Alexa Pass': '005Vr00000QYPh1IAH',
+    'Lindsay Kelvie': '005Vr00000QYQWVIA5',
+    'Paul Kellum': '005Vr00000QYQWqIAP',
+    'Travis Pederson': '005Vr00000QYQXDIA5'
+}
+
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
@@ -237,11 +245,17 @@ elif st.session_state.stage == 'setup':
 
     with col1:
         st.subheader("Enter AE Names")
-        st.markdown("Paste AE names (one per line):")
+        st.markdown("Quick start: Use the default team or paste AE names (one per line):")
+        
+        # Default AEs button
+        if st.button("📋 Use Default Team (Alexa Pass, Lindsay Kelvie, Paul Kellum, Travis Pederson)", use_container_width=True, key="default_aes"):
+            st.session_state.ae_list = list(AE_SFDC_IDS.keys())
+            st.rerun()
+        
         ae_input = st.text_area(
             "AE Names",
             value='\n'.join(st.session_state.ae_list) if st.session_state.ae_list else "",
-            height=150,
+            height=120,
             label_visibility="collapsed"
         )
         
@@ -280,11 +294,18 @@ elif st.session_state.stage == 'setup':
         st.warning("⚠️ Enter at least 2 AEs")
 
 # =============================================================================
-# STAGE 3: BLACKLIST
+# STAGE 3: BLACKLIST (OPTIONAL)
 # =============================================================================
 elif st.session_state.stage == 'cleanup':
-    st.header("🚫 Step 3: Blacklist Accounts")
-    st.markdown("Review and exclude any accounts with poor data quality before draft starts.")
+    st.header("🚫 Step 3: Blacklist Accounts (Optional)")
+    st.markdown("Review top 50 accounts and exclude any with poor data quality. Or skip to start drafting immediately.")
+
+    # SKIP BUTTON AT TOP
+    if st.button("⏭️ Skip Blacklist → Start Draft", type="primary", use_container_width=True):
+        st.session_state.stage = 'draft'
+        st.rerun()
+    
+    st.markdown("---")
 
     st.info(f"**Draft Order:** {' → '.join(st.session_state.draft_order)}")
     st.metric("Available Accounts", len(st.session_state.available_accounts))
@@ -295,7 +316,8 @@ elif st.session_state.stage == 'cleanup':
     display_df = available_df[['Account_Name', 'Account_ID', 'ICP_score', 'CXP_Swat_Tier']].head(50).copy()
     display_df['Remove'] = False
 
-    st.subheader("Top 50 Accounts - Check to Blacklist")
+    st.subheader("Top 50 Accounts (Optional Blacklist)")
+    st.caption("Check accounts to remove from draft, or skip this step entirely.")
     edited_df = st.data_editor(
         display_df,
         use_container_width=True,
@@ -316,12 +338,16 @@ elif st.session_state.stage == 'cleanup':
 
     st.markdown("---")
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("⬅️ Back"):
             st.session_state.stage = 'setup'
             st.rerun()
     with col2:
+        if st.button("⏭️ Skip", use_container_width=True):
+            st.session_state.stage = 'draft'
+            st.rerun()
+    with col3:
         if st.button("▶️ Start Draft", type="primary", use_container_width=True):
             st.session_state.stage = 'draft'
             st.rerun()
@@ -338,18 +364,21 @@ elif st.session_state.stage == 'draft':
     current_round = (current_pick // num_aes) + 1
     current_ae = get_current_ae()
 
-    # TOP STATUS BAR - Similar to Sleeper/Yahoo
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("🎯 Pick", f"{current_pick + 1}/{total_picks}")
-    with col2:
-        st.metric("📍 Round", current_round)
-    with col3:
-        st.metric("👤 Current AE", current_ae if current_ae else "N/A")
-    with col4:
-        st.metric("📦 Available", len(st.session_state.available_accounts))
-
-    st.markdown("---")
+    # TOP STATUS BAR - Professional layout with better hierarchy
+    st.markdown(f"""
+    <div style="background-color: #f0f2f6; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3 style="margin: 0; color: #1f77b4;">🔴 {current_ae if current_ae else 'TBD'} is Picking</h3>
+                <p style="margin: 5px 0; color: #555; font-size: 14px;">Round {current_round} • Pick {current_pick + 1} of {total_picks}</p>
+            </div>
+            <div style="text-align: right;">
+                <p style="margin: 0; font-size: 24px; font-weight: bold; color: #1f77b4;">{len(st.session_state.available_accounts)}</p>
+                <p style="margin: 5px 0; color: #555; font-size: 14px;">Accounts Available</p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     if current_pick < total_picks and len(st.session_state.available_accounts) > 0:
         
@@ -358,28 +387,31 @@ elif st.session_state.stage == 'draft':
         
         # ===== LEFT: MAIN BOARD =====
         with col_board:
-            st.subheader("📋 Available Accounts")
+            st.subheader("📋 Available Accounts", divider="blue")
             
-            # FILTER TABS
-            filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
+            # FILTER TABS - with better styling
             available_df = pd.DataFrame(st.session_state.available_accounts)
+            tier1_count = (available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False)).sum()
+            tier2_count = (available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False)).sum()
+            unranked_count = ((available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False) == False) & 
+                            (available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False) == False)).sum()
+            
+            filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4, gap="small")
             
             with filter_col1:
-                if st.button(f"📊 All ({len(available_df)})", use_container_width=True):
+                if st.button(f"📊 All ({len(available_df)})", use_container_width=True, key="filter_all"):
                     st.session_state.filter_tier = 'all'
             with filter_col2:
-                tier1_count = (available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False)).sum()
-                if st.button(f"🟡 T1 ({tier1_count})", use_container_width=True):
+                if st.button(f"🟡 Tier 1 ({tier1_count})", use_container_width=True, key="filter_t1"):
                     st.session_state.filter_tier = 'tier1'
             with filter_col3:
-                tier2_count = (available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False)).sum()
-                if st.button(f"🟢 T2 ({tier2_count})", use_container_width=True):
+                if st.button(f"🟢 Tier 2 ({tier2_count})", use_container_width=True, key="filter_t2"):
                     st.session_state.filter_tier = 'tier2'
             with filter_col4:
-                unranked_count = ((available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False) == False) & 
-                                (available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False) == False)).sum()
-                if st.button(f"⚪ Unr ({unranked_count})", use_container_width=True):
+                if st.button(f"⚪ Unranked ({unranked_count})", use_container_width=True, key="filter_unr"):
                     st.session_state.filter_tier = 'unranked'
+            
+            st.markdown("---")
             
             # Apply filter
             if st.session_state.filter_tier == 'tier1':
@@ -394,27 +426,29 @@ elif st.session_state.stage == 'draft':
             else:
                 filtered_df = available_df
             
-            st.markdown("---")
-            
             # ACCOUNT TABLE with clickable draft buttons
             for idx, (_, acc) in enumerate(filtered_df.iterrows()):
-                col_rank, col_info, col_button = st.columns([0.5, 4, 1])
+                col_rank, col_info, col_button = st.columns([0.5, 4, 0.8], gap="small")
                 
                 with col_rank:
-                    st.markdown(f"**{idx + 1}**")
+                    st.markdown(f"<span style='font-size: 16px; font-weight: bold; color: #666;'>{idx + 1}</span>", unsafe_allow_html=True)
                 
                 with col_info:
                     badge = tier_badge(acc['CXP_Swat_Tier'])
                     tier_text = tier_name(acc['CXP_Swat_Tier'])
                     
                     # Expandable for reasoning
-                    with st.expander(f"{badge} {acc['Account_Name']} ({acc['ICP_score']:.0f}) | {tier_text}"):
-                        st.write(f"**ID:** {acc['Account_ID']}")
+                    with st.expander(f"{badge} **{acc['Account_Name']}** — {acc['ICP_score']:.0f} | {tier_text}"):
+                        col_id, col_score = st.columns(2)
+                        with col_id:
+                            st.caption(f"**ID:** {acc['Account_ID']}")
+                        with col_score:
+                            st.caption(f"**Tier:** {tier_text}")
                         if acc.get('ICP_Reasoning', ''):
-                            st.write(f"**Reasoning:** {acc['ICP_Reasoning']}")
+                            st.markdown(f"**Why this tier:** {acc['ICP_Reasoning']}")
                 
                 with col_button:
-                    if st.button("📍", key=f"draft_{idx}_{acc['Account_ID']}", help="Draft this account"):
+                    if st.button("📍 Pick", key=f"draft_{idx}_{acc['Account_ID']}", help="Draft this account", use_container_width=True):
                         st.session_state.draft_picks.append({
                             'pick_number': current_pick + 1,
                             'round': current_round,
@@ -434,27 +468,34 @@ elif st.session_state.stage == 'draft':
         
         # ===== RIGHT SIDEBAR =====
         with col_sidebar:
-            st.subheader("📚 My Roster")
+            st.subheader("📚 Roster", divider="blue")
             
             if current_ae and current_ae in st.session_state.ae_books:
                 ae_ids = st.session_state.ae_books[current_ae]
-                st.metric("Picks", len(ae_ids))
                 
-                ae_book_df = st.session_state.accounts_df[
-                    st.session_state.accounts_df['Account_ID'].isin(ae_ids)
-                ].sort_values('ICP_score', ascending=False)
+                # Metrics with better styling
+                col_picks, col_avg = st.columns(2)
+                with col_picks:
+                    st.metric("Picks", len(ae_ids))
+                with col_avg:
+                    ae_book_df = st.session_state.accounts_df[
+                        st.session_state.accounts_df['Account_ID'].isin(ae_ids)
+                    ].sort_values('ICP_score', ascending=False)
+                    if len(ae_book_df) > 0:
+                        st.metric("Avg", f"{ae_book_df['ICP_score'].mean():.0f}")
                 
+                # Drafted accounts list
                 if len(ae_book_df) > 0:
-                    st.metric("Avg Score", f"{ae_book_df['ICP_score'].mean():.0f}")
-                    
-                    # Quick roster list
-                    st.write("**Drafted:**")
-                    for _, row in ae_book_df.iterrows():
+                    st.markdown("**Recently Drafted:**")
+                    for _, row in ae_book_df.head(5).iterrows():
                         badge = tier_badge(row['CXP_Swat_Tier'])
-                        st.caption(f"{badge} {row['Account_Name'][:20]}... ({row['ICP_score']:.0f})")
+                        st.markdown(f"  {badge} {row['Account_Name'][:18]} — {row['ICP_score']:.0f}")
+                    
+                    if len(ae_book_df) > 5:
+                        st.caption(f"...and {len(ae_book_df) - 5} more")
             
             st.markdown("---")
-            st.subheader("⚡ Actions")
+            st.subheader("⚡ Quick Actions", divider="orange")
             
             col_undo, col_auto = st.columns(2)
             with col_undo:
@@ -489,15 +530,16 @@ elif st.session_state.stage == 'draft':
         st.markdown("---")
         
         # ACTION BUTTONS AT BOTTOM
-        col_done, col_complete = st.columns(2)
+        st.markdown("### ⚙️ Draft Control")
+        col_done, col_complete = st.columns(2, gap="small")
         with col_done:
-            if st.button("🏁 Done Picking", use_container_width=True):
+            if st.button("🏁 Done Picking", use_container_width=True, help="Finish manual picks and review auto-complete"):
                 st.session_state.stage = 'autocomplete'
                 st.rerun()
         
         with col_complete:
             remaining = total_picks - current_pick
-            if st.button(f"🤖 Auto-Complete All {remaining}", type="primary", use_container_width=True):
+            if st.button(f"🤖 Auto-Complete All {remaining}", type="primary", use_container_width=True, help="Simulate remaining picks instantly"):
                 with st.spinner(f"Auto-drafting {remaining} accounts..."):
                     temp_pick = current_pick
                     temp_available = st.session_state.available_accounts.copy()
@@ -537,7 +579,7 @@ elif st.session_state.stage == 'draft':
         st.markdown("---")
         
         # DRAFT PICKS STREAM - Show all picks organized by round
-        st.subheader("📜 Draft Picks Stream")
+        st.subheader("📜 Draft History", divider="gray")
         
         if st.session_state.draft_picks:
             # Group picks by round
@@ -551,14 +593,17 @@ elif st.session_state.stage == 'draft':
             # Display rounds in reverse order (most recent at top)
             for round_num in sorted(picks_by_round.keys(), reverse=True):
                 round_picks = picks_by_round[round_num]
-                with st.expander(f"**Round {round_num}** — {len(round_picks)} picks", expanded=(round_num == current_round)):
+                is_current = (round_num == current_round)
+                round_label = f"Round {round_num}" + (" ← Currently Picking" if is_current else "")
+                
+                with st.expander(f"**{round_label}** ({len(round_picks)} picks)", expanded=is_current):
                     for pick in round_picks:
                         badge = tier_badge(pick['tier'])
-                        st.write(
-                            f"**Pick {pick['pick_number']}** — {pick['ae']} | {badge} {pick['account_name']} ({pick['icp_score']:.0f})"
+                        st.markdown(
+                            f"**#{pick['pick_number']}** {pick['ae']:15} — {badge} {pick['account_name']} **{pick['icp_score']:.0f}**"
                         )
         else:
-            st.info("No picks yet - draft starting soon!")
+            st.info("📭 No picks yet - draft starting soon!")
         
         st.markdown("---")
         if len(st.session_state.available_accounts) == 0:
@@ -694,18 +739,21 @@ elif st.session_state.stage == 'results':
         for ae in st.session_state.ae_list:
             ae_ids = st.session_state.ae_books[ae]
             ae_accounts = df[df['Account_ID'].isin(ae_ids)]
+            # Get Salesforce ID for this AE (if it exists in our mapping)
+            ae_sfdc_id = AE_SFDC_IDS.get(ae, '')
             for _, row in ae_accounts.iterrows():
                 export_data.append({
                     'Account_ID': row['Account_ID'],
                     'Account_Name': row['Account_Name'],
                     'New_Owner': ae,
+                    'Owner_SFDC_ID': ae_sfdc_id,
                     'ICP_Score': row['ICP_score'],
                     'CXP_Swat_Tier': row['CXP_Swat_Tier']
                 })
         export_df = pd.DataFrame(export_data)
         csv = export_df.to_csv(index=False)
         st.download_button(
-            label="📥 Download Assignments",
+            label="📥 Download Assignments (with SFDC IDs)",
             data=csv,
             file_name=f"draft_assignments_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
             mime="text/csv"
