@@ -35,6 +35,8 @@ if 'accounts_per_ae' not in st.session_state:
     st.session_state.accounts_per_ae = 20
 if 'is_snake' not in st.session_state:
     st.session_state.is_snake = True
+if 'filter_tier' not in st.session_state:
+    st.session_state.filter_tier = 'all'
 if 'accounts_shown' not in st.session_state:
     st.session_state.accounts_shown = 50
 
