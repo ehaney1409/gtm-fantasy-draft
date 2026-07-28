@@ -6,10 +6,6 @@ from datetime import datetime
 # Page config
 st.set_page_config(page_title="GTM Fantasy Draft", layout="wide", page_icon="🏈")
 
-# Header
-st.title("🏈 GTM Fantasy Draft")
-st.markdown("*Territory planning made fun - draft your accounts like fantasy football*")
-
 # =============================================================================
 # SESSION STATE
 # =============================================================================
@@ -504,6 +500,33 @@ elif st.session_state.stage == 'draft':
         
         # ===== RIGHT SIDEBAR =====
         with col_sidebar:
+            # ON THE CLOCK - Show upcoming picks
+            st.subheader("🕐 On the Clock", divider="orange")
+            
+            next_picks_count = 0
+            for upcoming_pick_num in range(current_pick, min(current_pick + 10, total_picks)):
+                if next_picks_count >= 5:  # Show next 5
+                    break
+                
+                upcoming_round = (upcoming_pick_num // num_aes) + 1
+                pick_in_round = upcoming_pick_num % num_aes
+                
+                if st.session_state.is_snake and upcoming_round % 2 == 0:
+                    ae_idx = num_aes - 1 - pick_in_round
+                else:
+                    ae_idx = pick_in_round
+                
+                upcoming_ae = st.session_state.draft_order[ae_idx]
+                is_now = (upcoming_pick_num == current_pick)
+                
+                if is_now:
+                    st.markdown(f"**🔴 NOW: #{upcoming_pick_num + 1} {upcoming_ae}** (Rd {upcoming_round})")
+                else:
+                    st.markdown(f"→ #{upcoming_pick_num + 1} {upcoming_ae} (Rd {upcoming_round})")
+                
+                next_picks_count += 1
+            
+            st.markdown("---")
             st.subheader("📚 Roster", divider="blue")
             
             if current_ae and current_ae in st.session_state.ae_books:
@@ -613,6 +636,12 @@ elif st.session_state.stage == 'draft':
                 st.rerun()
         
         st.markdown("---")
+        if len(st.session_state.available_accounts) == 0:
+            st.warning("❌ No more accounts available!")
+        if current_pick >= total_picks:
+            st.success("✅ All manual picks complete!")
+        
+        st.markdown("---")
         
         # DRAFT PICKS STREAM - Show all picks organized by round
         st.subheader("📜 Draft History", divider="gray")
@@ -640,12 +669,6 @@ elif st.session_state.stage == 'draft':
                         )
         else:
             st.info("📭 No picks yet - draft starting soon!")
-        
-        st.markdown("---")
-        if len(st.session_state.available_accounts) == 0:
-            st.warning("❌ No more accounts available!")
-        if current_pick >= total_picks:
-            st.success("✅ All manual picks complete!")
         
         if st.button("▶️ Go to Results"):
             st.session_state.stage = 'results'
