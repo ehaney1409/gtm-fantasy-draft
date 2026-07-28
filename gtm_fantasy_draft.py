@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import json
+import os
 
 # Page config
 st.set_page_config(page_title="GTM Fantasy Draft", layout="wide", page_icon="🏈")
@@ -9,6 +11,74 @@ st.set_page_config(page_title="GTM Fantasy Draft", layout="wide", page_icon="�
 # Header
 st.title("🏈 GTM Fantasy Draft")
 st.markdown("*Territory planning made fun - draft your accounts like fantasy football*")
+
+# =============================================================================
+# SAVE/RESUME FUNCTIONALITY
+# =============================================================================
+DRAFTS_DIR = "/mnt/user-data/outputs/draft_saves"
+os.makedirs(DRAFTS_DIR, exist_ok=True)
+
+def save_draft(draft_name):
+    """Save current draft state to JSON"""
+    draft_state = {
+        'timestamp': datetime.now().isoformat(),
+        'draft_name': draft_name,
+        'stage': st.session_state.stage,
+        'ae_list': st.session_state.ae_list,
+        'draft_order': st.session_state.draft_order,
+        'draft_picks': st.session_state.draft_picks,
+        'current_pick': st.session_state.current_pick,
+        'available_accounts': st.session_state.available_accounts,
+        'ae_books': st.session_state.ae_books,
+        'blacklisted_accounts': list(st.session_state.blacklisted_accounts),
+        'accounts_per_ae': st.session_state.accounts_per_ae,
+        'is_snake': st.session_state.is_snake,
+        'filter_tier': st.session_state.filter_tier,
+        'accounts_df': st.session_state.accounts_df.to_dict('list') if st.session_state.accounts_df is not None else None
+    }
+    
+    file_path = os.path.join(DRAFTS_DIR, f"{draft_name}.json")
+    with open(file_path, 'w') as f:
+        json.dump(draft_state, f, indent=2)
+    return file_path
+
+def load_draft(draft_name):
+    """Load a previously saved draft state"""
+    file_path = os.path.join(DRAFTS_DIR, f"{draft_name}.json")
+    if os.path.exists(file_path):
+        with open(file_path, 'r') as f:
+            draft_state = json.load(f)
+        
+        st.session_state.stage = draft_state['stage']
+        st.session_state.ae_list = draft_state['ae_list']
+        st.session_state.draft_order = draft_state['draft_order']
+        st.session_state.draft_picks = draft_state['draft_picks']
+        st.session_state.current_pick = draft_state['current_pick']
+        st.session_state.available_accounts = draft_state['available_accounts']
+        st.session_state.ae_books = draft_state['ae_books']
+        st.session_state.blacklisted_accounts = set(draft_state['blacklisted_accounts'])
+        st.session_state.accounts_per_ae = draft_state['accounts_per_ae']
+        st.session_state.is_snake = draft_state['is_snake']
+        st.session_state.filter_tier = draft_state['filter_tier']
+        
+        if draft_state['accounts_df'] is not None:
+            st.session_state.accounts_df = pd.DataFrame(draft_state['accounts_df'])
+        
+        return True
+    return False
+
+def get_saved_drafts():
+    """Get list of saved draft files"""
+    if not os.path.exists(DRAFTS_DIR):
+        return []
+    drafts = []
+    for file in os.listdir(DRAFTS_DIR):
+        if file.endswith('.json'):
+            draft_name = file[:-5]  # Remove .json
+            file_path = os.path.join(DRAFTS_DIR, file)
+            mtime = os.path.getmtime(file_path)
+            drafts.append((draft_name, datetime.fromtimestamp(mtime)))
+    return sorted(drafts, key=lambda x: x[1], reverse=True)
 
 # =============================================================================
 # SESSION STATE
@@ -139,8 +209,27 @@ with st.sidebar:
 if st.session_state.stage == 'upload':
     st.header("📁 Step 1: Upload Account Data")
 
+    # RESUME SAVED DRAFT
+    saved_drafts = get_saved_drafts()
+    if saved_drafts:
+        st.subheader("📋 Resume a Saved Draft")
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            draft_options = [f"{name} ({mtime.strftime('%m/%d %H:%M')})" for name, mtime in saved_drafts]
+            selected = st.selectbox("Choose a saved draft to resume:", draft_options)
+        with col2:
+            if selected and st.button("▶️ Load Draft", use_container_width=True):
+                draft_name = selected.split(' (')[0]
+                if load_draft(draft_name):
+                    st.success(f"✅ Draft '{draft_name}' loaded!")
+                    st.rerun()
+                else:
+                    st.error("❌ Could not load draft")
+        
+        st.markdown("---")
+
     st.markdown("""
-    Upload your SWAT accounts CSV. Required columns:
+    Or upload a new SWAT CSV file. Required columns:
     - **Company name** — Account Name
     - **Salesforce ID** — Account ID
     - **ICP score** — Account Score (numeric)
@@ -358,6 +447,25 @@ elif st.session_state.stage == 'cleanup':
 elif st.session_state.stage == 'draft':
     st.header("🎯 Live Draft")
 
+    # SAVE DRAFT SECTION
+    col_save_left, col_save_right = st.columns([3, 1])
+    with col_save_left:
+        save_name = st.text_input("💾 Save Draft Progress", placeholder="e.g., SWAT_Round_3_Draft", label_visibility="collapsed")
+        if save_name and st.button("💾 Save Draft", use_container_width=True, key="save_btn"):
+            save_draft(save_name)
+            st.success(f"✅ Draft saved as '{save_name}'")
+    with col_save_right:
+        saved = get_saved_drafts()
+        if saved:
+            st.caption("📋 Saved Drafts:")
+            for draft_name, mtime in saved[:3]:
+                if st.button(f"📂 {draft_name[:20]}", use_container_width=True, key=f"load_{draft_name}"):
+                    load_draft(draft_name)
+                    st.success(f"✅ Loaded '{draft_name}'")
+                    st.rerun()
+    
+    st.markdown("---")
+
     num_aes = len(st.session_state.ae_list)
     total_picks = num_aes * st.session_state.accounts_per_ae
     current_pick = st.session_state.current_pick
@@ -439,11 +547,8 @@ elif st.session_state.stage == 'draft':
                     
                     # Expandable for reasoning
                     with st.expander(f"{badge} **{acc['Account_Name']}** — {acc['ICP_score']:.0f} | {tier_text}"):
-                        col_id, col_score = st.columns(2)
-                        with col_id:
-                            st.caption(f"**ID:** {acc['Account_ID']}")
-                        with col_score:
-                            st.caption(f"**Tier:** {tier_text}")
+                        st.markdown(f"**ID:** {acc['Account_ID']}")
+                        st.markdown(f"**Tier:** {tier_text}")
                         if acc.get('ICP_Reasoning', ''):
                             st.markdown(f"**Why this tier:** {acc['ICP_Reasoning']}")
                 
