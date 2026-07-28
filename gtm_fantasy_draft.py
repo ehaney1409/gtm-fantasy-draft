@@ -35,8 +35,8 @@ if 'accounts_per_ae' not in st.session_state:
     st.session_state.accounts_per_ae = 20
 if 'is_snake' not in st.session_state:
     st.session_state.is_snake = True
-if 'filter_tier' not in st.session_state:
-    st.session_state.filter_tier = 'all'
+if 'accounts_shown' not in st.session_state:
+    st.session_state.accounts_shown = 50
 
 # AE SALESFORCE ID MAPPING
 AE_SFDC_IDS = {
@@ -443,32 +443,32 @@ elif st.session_state.stage == 'draft':
             else:
                 filtered_df = search_df
             
-            # Show first 50 accounts, rest available via scroll
-            ACCOUNTS_PER_PAGE = 50
-            display_df = filtered_df.head(ACCOUNTS_PER_PAGE)
+            # Show first N accounts (growing with Load More button)
+            display_df = filtered_df.head(st.session_state.accounts_shown)
             
             # Info message
             if search_query:
                 st.caption(f"🔍 Found {len(filtered_df)} account(s) matching '{search_query}'")
-            if len(filtered_df) > ACCOUNTS_PER_PAGE:
-                st.caption(f"📌 Showing top {ACCOUNTS_PER_PAGE} of {len(filtered_df)} accounts (scroll for more)")
+            if len(filtered_df) > st.session_state.accounts_shown:
+                st.caption(f"📌 Showing {len(display_df)} of {len(filtered_df)} accounts")
             
-            # ACCOUNT TABLE with clickable draft buttons - optimized rendering
+            # ACCOUNT TABLE with clickable draft buttons - improved connection
             for idx, (_, acc) in enumerate(display_df.iterrows()):
-                col_rank, col_info, col_button = st.columns([0.5, 4, 0.8], gap="small")
+                badge = tier_badge(acc['CXP_Swat_Tier'])
+                tier_text = tier_name(acc['CXP_Swat_Tier'])
+                
+                # Account header with pick button in same row
+                col_rank, col_info, col_button = st.columns([0.5, 4, 1.2], gap="small")
                 
                 with col_rank:
-                    st.markdown(f"<span style='font-size: 16px; font-weight: bold; color: #666;'>{idx + 1}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='font-size: 16px; font-weight: bold; color: #1f77b4;'>{idx + 1}</span>", unsafe_allow_html=True)
                 
                 with col_info:
-                    badge = tier_badge(acc['CXP_Swat_Tier'])
-                    tier_text = tier_name(acc['CXP_Swat_Tier'])
-                    
-                    # Simplified account display (no expensive expander)
-                    st.markdown(f"{badge} **{acc['Account_Name']}** — {acc['ICP_score']:.0f} | {tier_text} | {acc['Account_ID'][:12]}...")
+                    st.markdown(f"{badge} **{acc['Account_Name']}**")
+                    st.caption(f"Score: {acc['ICP_score']:.0f} | {tier_text} | ID: {acc['Account_ID']}")
                 
                 with col_button:
-                    if st.button("📍 Pick", key=f"draft_{idx}_{acc['Account_ID']}", help="Draft this account", use_container_width=True):
+                    if st.button(f"📍 PICK", key=f"draft_{idx}_{acc['Account_ID']}", use_container_width=True):
                         st.session_state.draft_picks.append({
                             'pick_number': current_pick + 1,
                             'round': current_round,
@@ -484,6 +484,20 @@ elif st.session_state.stage == 'draft':
                             if a['Account_ID'] != acc['Account_ID']
                         ]
                         st.session_state.current_pick += 1
+                        st.rerun()
+                
+                # Show ICP reasoning if available
+                if acc.get('ICP_Reasoning', ''):
+                    st.caption(f"💡 {acc['ICP_Reasoning']}")
+                
+                st.divider()
+            
+            # Load More button if there are more accounts
+            if len(filtered_df) > st.session_state.accounts_shown:
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col2:
+                    if st.button(f"📂 Load More ({len(filtered_df) - st.session_state.accounts_shown} remaining)", use_container_width=True):
+                        st.session_state.accounts_shown += 50
                         st.rerun()
         
         # ===== RIGHT SIDEBAR =====
