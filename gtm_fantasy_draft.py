@@ -389,17 +389,34 @@ elif st.session_state.stage == 'draft':
         with col_board:
             st.subheader("📋 Available Accounts", divider="blue")
             
+            # SEARCH BOX
+            search_query = st.text_input(
+                "🔍 Search by name or ID",
+                placeholder="e.g., 'Shapellx' or '001Vr000'",
+                label_visibility="collapsed"
+            )
+            
             # FILTER TABS - with better styling
             available_df = pd.DataFrame(st.session_state.available_accounts)
-            tier1_count = (available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False)).sum()
-            tier2_count = (available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False)).sum()
-            unranked_count = ((available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False) == False) & 
-                            (available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False) == False)).sum()
+            
+            # Apply search first if provided
+            if search_query:
+                search_lower = search_query.lower()
+                search_df = available_df[
+                    (available_df['Account_Name'].str.lower().str.contains(search_lower, na=False)) |
+                    (available_df['Account_ID'].str.lower().str.contains(search_lower, na=False))
+                ]
+            else:
+                search_df = available_df
+            
+            tier1_count = (search_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False)).sum()
+            tier2_count = (search_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False)).sum()
+            unranked_count = len(search_df) - tier1_count - tier2_count
             
             filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4, gap="small")
             
             with filter_col1:
-                if st.button(f"📊 All ({len(available_df)})", use_container_width=True, key="filter_all"):
+                if st.button(f"📊 All ({len(search_df)})", use_container_width=True, key="filter_all"):
                     st.session_state.filter_tier = 'all'
             with filter_col2:
                 if st.button(f"🟡 Tier 1 ({tier1_count})", use_container_width=True, key="filter_t1"):
@@ -413,21 +430,31 @@ elif st.session_state.stage == 'draft':
             
             st.markdown("---")
             
-            # Apply filter
+            # Apply tier filter on top of search
             if st.session_state.filter_tier == 'tier1':
-                filtered_df = available_df[available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False)]
+                filtered_df = search_df[search_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False)]
             elif st.session_state.filter_tier == 'tier2':
-                filtered_df = available_df[available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False)]
+                filtered_df = search_df[search_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False)]
             elif st.session_state.filter_tier == 'unranked':
-                filtered_df = available_df[
-                    (available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False) == False) &
-                    (available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False) == False)
+                filtered_df = search_df[
+                    (search_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False) == False) &
+                    (search_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False) == False)
                 ]
             else:
-                filtered_df = available_df
+                filtered_df = search_df
             
-            # ACCOUNT TABLE with clickable draft buttons
-            for idx, (_, acc) in enumerate(filtered_df.iterrows()):
+            # Show first 50 accounts, rest available via scroll
+            ACCOUNTS_PER_PAGE = 50
+            display_df = filtered_df.head(ACCOUNTS_PER_PAGE)
+            
+            # Info message
+            if search_query:
+                st.caption(f"🔍 Found {len(filtered_df)} account(s) matching '{search_query}'")
+            if len(filtered_df) > ACCOUNTS_PER_PAGE:
+                st.caption(f"📌 Showing top {ACCOUNTS_PER_PAGE} of {len(filtered_df)} accounts (scroll for more)")
+            
+            # ACCOUNT TABLE with clickable draft buttons - optimized rendering
+            for idx, (_, acc) in enumerate(display_df.iterrows()):
                 col_rank, col_info, col_button = st.columns([0.5, 4, 0.8], gap="small")
                 
                 with col_rank:
@@ -437,12 +464,8 @@ elif st.session_state.stage == 'draft':
                     badge = tier_badge(acc['CXP_Swat_Tier'])
                     tier_text = tier_name(acc['CXP_Swat_Tier'])
                     
-                    # Expandable for reasoning
-                    with st.expander(f"{badge} **{acc['Account_Name']}** — {acc['ICP_score']:.0f} | {tier_text}"):
-                        st.markdown(f"**ID:** {acc['Account_ID']}")
-                        st.markdown(f"**Tier:** {tier_text}")
-                        if acc.get('ICP_Reasoning', ''):
-                            st.markdown(f"**Why this tier:** {acc['ICP_Reasoning']}")
+                    # Simplified account display (no expensive expander)
+                    st.markdown(f"{badge} **{acc['Account_Name']}** — {acc['ICP_score']:.0f} | {tier_text} | {acc['Account_ID'][:12]}...")
                 
                 with col_button:
                     if st.button("📍 Pick", key=f"draft_{idx}_{acc['Account_ID']}", help="Draft this account", use_container_width=True):
