@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
-import time
 
 # Page config
 st.set_page_config(page_title="GTM Fantasy Draft", layout="wide", page_icon="🏈")
@@ -36,12 +35,6 @@ if 'accounts_per_ae' not in st.session_state:
     st.session_state.accounts_per_ae = 20
 if 'is_snake' not in st.session_state:
     st.session_state.is_snake = True
-if 'pick_start_time' not in st.session_state:
-    st.session_state.pick_start_time = None
-if 'timer_seconds' not in st.session_state:
-    st.session_state.timer_seconds = 30
-if 'selected_account_idx' not in st.session_state:
-    st.session_state.selected_account_idx = None
 if 'filter_tier' not in st.session_state:
     st.session_state.filter_tier = 'all'
 
@@ -93,33 +86,44 @@ def tier_badge(tier_val):
         return '🟢'
     return '⚪'
 
-# Sidebar navigation
+def tier_name(tier_val):
+    """Return tier name"""
+    if pd.isna(tier_val) or tier_val == '' or tier_val == 'nan':
+        return 'Unranked'
+    tier_str = str(tier_val).lower()
+    if 'tier 1' in tier_str:
+        return 'Tier 1'
+    elif 'tier 2' in tier_str:
+        return 'Tier 2'
+    return 'Unranked'
+
+# Sidebar - draft status
 with st.sidebar:
-    st.header("Draft Status")
+    st.header("📊 Draft Status")
     
-    if st.session_state.accounts_df is not None:
-        st.success(f"✅ Loaded: {len(st.session_state.accounts_df)} accounts")
+    if st.session_state.stage == 'draft':
+        num_aes = len(st.session_state.ae_list)
+        total_picks = num_aes * st.session_state.accounts_per_ae
+        current = st.session_state.current_pick
+        current_round = (current // num_aes) + 1
+        picks_in_round = (current % num_aes) + 1
+        
+        st.metric("Current Pick", f"{current + 1} of {total_picks}")
+        st.metric("Round", current_round)
+        st.metric("Pick in Round", f"{picks_in_round} of {num_aes}")
+        
+        current_ae = get_current_ae()
+        if current_ae:
+            st.info(f"**Now Picking:** {current_ae}")
+            ae_picks = len(st.session_state.ae_books[current_ae])
+            st.metric(f"{current_ae}'s Picks", ae_picks)
+        
+        st.markdown("---")
+        st.metric("Accounts Left", len(st.session_state.available_accounts))
     
     if st.session_state.stage in ['draft', 'results']:
-        st.success(f"✅ {len(st.session_state.ae_list)} AEs")
-        st.info(f"📊 {'Snake' if st.session_state.is_snake else 'Linear'} Draft")
-        if st.session_state.current_pick > 0:
-            st.metric("Current Pick", f"{st.session_state.current_pick} of {len(st.session_state.ae_list) * st.session_state.accounts_per_ae}")
-    
-    st.markdown("---")
-    st.markdown("**Stage:**")
-    stages = {
-        'upload': '1️⃣ Upload CSV',
-        'setup': '2️⃣ Setup',
-        'cleanup': '3️⃣ Blacklist',
-        'draft': '4️⃣ Live Draft',
-        'results': '5️⃣ Results'
-    }
-    for key, label in stages.items():
-        if st.session_state.stage == key:
-            st.markdown(f"**→ {label}**")
-        else:
-            st.markdown(f"   {label}")
+        st.metric("AEs", len(st.session_state.ae_list))
+        st.metric("Type", "Snake" if st.session_state.is_snake else "Linear")
 
 # =============================================================================
 # STAGE 1: CSV UPLOAD
@@ -224,7 +228,7 @@ if st.session_state.stage == 'upload':
             st.error(f"❌ Error: {str(e)}")
 
 # =============================================================================
-# STAGE 2: SETUP (AEs + DRAFT ORDER)
+# STAGE 2: SETUP
 # =============================================================================
 elif st.session_state.stage == 'setup':
     st.header("⚙️ Step 2: Configure Draft")
@@ -251,7 +255,7 @@ elif st.session_state.stage == 'setup':
 
     with col2:
         st.subheader("Settings")
-        draft_type = st.radio("Type", ["Snake", "Linear"])
+        draft_type = st.radio("Draft Type", ["Snake", "Linear"])
         st.session_state.is_snake = (draft_type == "Snake")
         
         st.session_state.accounts_per_ae = st.number_input(
@@ -259,13 +263,6 @@ elif st.session_state.stage == 'setup':
             min_value=1,
             max_value=100,
             value=st.session_state.accounts_per_ae
-        )
-        
-        st.session_state.timer_seconds = st.number_input(
-            "Timer (seconds)",
-            min_value=10,
-            max_value=120,
-            value=30
         )
 
     st.markdown("---")
@@ -283,7 +280,7 @@ elif st.session_state.stage == 'setup':
         st.warning("⚠️ Enter at least 2 AEs")
 
 # =============================================================================
-# STAGE 3: BLACKLIST CLEANUP
+# STAGE 3: BLACKLIST
 # =============================================================================
 elif st.session_state.stage == 'cleanup':
     st.header("🚫 Step 3: Blacklist Accounts")
@@ -327,218 +324,254 @@ elif st.session_state.stage == 'cleanup':
     with col2:
         if st.button("▶️ Start Draft", type="primary", use_container_width=True):
             st.session_state.stage = 'draft'
-            st.session_state.pick_start_time = datetime.now()
             st.rerun()
 
 # =============================================================================
-# STAGE 4: LIVE DRAFT
+# STAGE 4: LIVE DRAFT - SLEEPER/YAHOO STYLE
 # =============================================================================
 elif st.session_state.stage == 'draft':
-    st.header("🎯 Live Draft - Pick from the Board")
+    st.header("🎯 Live Draft")
 
     num_aes = len(st.session_state.ae_list)
     total_picks = num_aes * st.session_state.accounts_per_ae
     current_pick = st.session_state.current_pick
-
     current_round = (current_pick // num_aes) + 1
     current_ae = get_current_ae()
 
-    # Top status bar
-    st.markdown("---")
+    # TOP STATUS BAR - Similar to Sleeper/Yahoo
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("Pick", f"{current_pick + 1}/{total_picks}")
+        st.metric("🎯 Pick", f"{current_pick + 1}/{total_picks}")
     with col2:
-        st.metric("Round", current_round)
+        st.metric("📍 Round", current_round)
     with col3:
-        st.metric("Current AE", current_ae if current_ae else "N/A")
+        st.metric("👤 Current AE", current_ae if current_ae else "N/A")
     with col4:
-        st.metric("Available", len(st.session_state.available_accounts))
+        st.metric("📦 Available", len(st.session_state.available_accounts))
 
     st.markdown("---")
 
     if current_pick < total_picks and len(st.session_state.available_accounts) > 0:
         
-        # TIMER SECTION with auto-draft
-        timer_placeholder = st.empty()
-        time_is_up = False
+        # MAIN DRAFT BOARD
+        col_board, col_sidebar = st.columns([3, 1])
         
-        if st.session_state.pick_start_time is None:
-            st.session_state.pick_start_time = datetime.now()
-        
-        elapsed = (datetime.now() - st.session_state.pick_start_time).total_seconds()
-        remaining = max(0, st.session_state.timer_seconds - elapsed)
-        
-        # Display timer
-        if remaining > 10:
-            timer_color = "green"
-        elif remaining > 5:
-            timer_color = "orange"
-        else:
-            timer_color = "red"
-        
-        timer_placeholder.markdown(
-            f"<h2 style='text-align: center; color: {timer_color};'>⏱️ {int(remaining)} seconds</h2>",
-            unsafe_allow_html=True
-        )
-        
-        # If time expired, auto-draft best
-        if remaining <= 0:
-            with st.spinner("⏰ Time expired - auto-drafting best available..."):
-                time.sleep(0.5)
-                best = st.session_state.available_accounts[0]
-                st.session_state.draft_picks.append({
-                    'pick_number': current_pick + 1,
-                    'round': current_round,
-                    'ae': current_ae,
-                    'account_name': best['Account_Name'],
-                    'account_id': best['Account_ID'],
-                    'icp_score': best['ICP_score'],
-                    'tier': best.get('CXP_Swat_Tier', '')
-                })
-                st.session_state.ae_books[current_ae].append(best['Account_ID'])
-                st.session_state.available_accounts.pop(0)
-                st.session_state.current_pick += 1
-                st.session_state.pick_start_time = None
-                st.rerun()
-        
-        st.markdown("---")
-
-        # DRAFT BOARD with FILTERS
-        st.subheader("📋 Available Accounts")
-        
-        # Filter tabs
-        filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
-        
-        available_df = pd.DataFrame(st.session_state.available_accounts)
-        
-        with filter_col1:
-            if st.button(f"📊 All ({len(available_df)})"):
-                st.session_state.filter_tier = 'all'
-        with filter_col2:
-            tier1_count = (available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False)).sum()
-            if st.button(f"🟡 Tier 1 ({tier1_count})"):
-                st.session_state.filter_tier = 'tier1'
-        with filter_col3:
-            tier2_count = (available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False)).sum()
-            if st.button(f"🟢 Tier 2 ({tier2_count})"):
-                st.session_state.filter_tier = 'tier2'
-        with filter_col4:
-            unranked_count = ((available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False) == False) & 
-                            (available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False) == False)).sum()
-            if st.button(f"⚪ Unranked ({unranked_count})"):
-                st.session_state.filter_tier = 'unranked'
-        
-        # Apply filter
-        if st.session_state.filter_tier == 'tier1':
-            filtered_df = available_df[available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False)]
-        elif st.session_state.filter_tier == 'tier2':
-            filtered_df = available_df[available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False)]
-        elif st.session_state.filter_tier == 'unranked':
-            filtered_df = available_df[
-                (available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False) == False) &
-                (available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False) == False)
-            ]
-        else:
-            filtered_df = available_df
-        
-        st.info(f"Showing {len(filtered_df)} accounts")
-        
-        st.markdown("---")
-        
-        # Display as expandable cards with reasoning
-        for idx, acc in filtered_df.iterrows():
-            badge = tier_badge(acc['CXP_Swat_Tier'])
-            col_title, col_draft = st.columns([4, 1])
+        # ===== LEFT: MAIN BOARD =====
+        with col_board:
+            st.subheader("📋 Available Accounts")
             
-            with col_title:
-                with st.expander(f"{badge} {acc['Account_Name']} — Score: {acc['ICP_score']:.0f}"):
-                    st.write(f"**Account ID:** {acc['Account_ID']}")
-                    st.write(f"**Tier:** {acc['CXP_Swat_Tier']}")
-                    st.write(f"**Score:** {acc['ICP_score']:.0f}")
+            # FILTER TABS
+            filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
+            available_df = pd.DataFrame(st.session_state.available_accounts)
+            
+            with filter_col1:
+                if st.button(f"📊 All ({len(available_df)})", use_container_width=True):
+                    st.session_state.filter_tier = 'all'
+            with filter_col2:
+                tier1_count = (available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False)).sum()
+                if st.button(f"🟡 T1 ({tier1_count})", use_container_width=True):
+                    st.session_state.filter_tier = 'tier1'
+            with filter_col3:
+                tier2_count = (available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False)).sum()
+                if st.button(f"🟢 T2 ({tier2_count})", use_container_width=True):
+                    st.session_state.filter_tier = 'tier2'
+            with filter_col4:
+                unranked_count = ((available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False) == False) & 
+                                (available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False) == False)).sum()
+                if st.button(f"⚪ Unr ({unranked_count})", use_container_width=True):
+                    st.session_state.filter_tier = 'unranked'
+            
+            # Apply filter
+            if st.session_state.filter_tier == 'tier1':
+                filtered_df = available_df[available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False)]
+            elif st.session_state.filter_tier == 'tier2':
+                filtered_df = available_df[available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False)]
+            elif st.session_state.filter_tier == 'unranked':
+                filtered_df = available_df[
+                    (available_df['CXP_Swat_Tier'].str.contains('Tier 1', case=False, na=False) == False) &
+                    (available_df['CXP_Swat_Tier'].str.contains('Tier 2', case=False, na=False) == False)
+                ]
+            else:
+                filtered_df = available_df
+            
+            st.markdown("---")
+            
+            # ACCOUNT TABLE with clickable draft buttons
+            for idx, (_, acc) in enumerate(filtered_df.iterrows()):
+                col_rank, col_info, col_button = st.columns([0.5, 4, 1])
+                
+                with col_rank:
+                    st.markdown(f"**{idx + 1}**")
+                
+                with col_info:
+                    badge = tier_badge(acc['CXP_Swat_Tier'])
+                    tier_text = tier_name(acc['CXP_Swat_Tier'])
                     
-                    if acc.get('ICP_Reasoning', ''):
-                        st.write(f"**Reasoning:** {acc['ICP_Reasoning']}")
+                    # Expandable for reasoning
+                    with st.expander(f"{badge} {acc['Account_Name']} ({acc['ICP_score']:.0f}) | {tier_text}"):
+                        st.write(f"**ID:** {acc['Account_ID']}")
+                        if acc.get('ICP_Reasoning', ''):
+                            st.write(f"**Reasoning:** {acc['ICP_Reasoning']}")
+                
+                with col_button:
+                    if st.button("📍", key=f"draft_{idx}_{acc['Account_ID']}", help="Draft this account"):
+                        st.session_state.draft_picks.append({
+                            'pick_number': current_pick + 1,
+                            'round': current_round,
+                            'ae': current_ae,
+                            'account_name': acc['Account_Name'],
+                            'account_id': acc['Account_ID'],
+                            'icp_score': acc['ICP_score'],
+                            'tier': acc.get('CXP_Swat_Tier', '')
+                        })
+                        st.session_state.ae_books[current_ae].append(acc['Account_ID'])
+                        st.session_state.available_accounts = [
+                            a for a in st.session_state.available_accounts
+                            if a['Account_ID'] != acc['Account_ID']
+                        ]
+                        st.session_state.current_pick += 1
+                        st.rerun()
+        
+        # ===== RIGHT SIDEBAR =====
+        with col_sidebar:
+            st.subheader("📚 My Roster")
             
-            with col_draft:
-                # Draft button next to account name
-                if st.button(f"📍 Draft", key=f"draft_{acc['Account_ID']}"):
+            if current_ae and current_ae in st.session_state.ae_books:
+                ae_ids = st.session_state.ae_books[current_ae]
+                st.metric("Picks", len(ae_ids))
+                
+                ae_book_df = st.session_state.accounts_df[
+                    st.session_state.accounts_df['Account_ID'].isin(ae_ids)
+                ].sort_values('ICP_score', ascending=False)
+                
+                if len(ae_book_df) > 0:
+                    st.metric("Avg Score", f"{ae_book_df['ICP_score'].mean():.0f}")
+                    
+                    # Quick roster list
+                    st.write("**Drafted:**")
+                    for _, row in ae_book_df.iterrows():
+                        badge = tier_badge(row['CXP_Swat_Tier'])
+                        st.caption(f"{badge} {row['Account_Name'][:20]}... ({row['ICP_score']:.0f})")
+            
+            st.markdown("---")
+            st.subheader("⚡ Actions")
+            
+            col_undo, col_auto = st.columns(2)
+            with col_undo:
+                if current_pick > 0 and st.button("↩️ Undo", use_container_width=True):
+                    last = st.session_state.draft_picks.pop()
+                    st.session_state.ae_books[last['ae']].remove(last['account_id'])
+                    undo_acc = st.session_state.accounts_df[
+                        st.session_state.accounts_df['Account_ID'] == last['account_id']
+                    ].iloc[0].to_dict()
+                    st.session_state.available_accounts.insert(0, undo_acc)
+                    st.session_state.available_accounts = sort_accounts_by_tier(st.session_state.available_accounts)
+                    st.session_state.current_pick -= 1
+                    st.rerun()
+            
+            with col_auto:
+                if st.button("⚡ Auto-Best", use_container_width=True):
+                    best = st.session_state.available_accounts[0]
                     st.session_state.draft_picks.append({
                         'pick_number': current_pick + 1,
                         'round': current_round,
                         'ae': current_ae,
-                        'account_name': acc['Account_Name'],
-                        'account_id': acc['Account_ID'],
-                        'icp_score': acc['ICP_score'],
-                        'tier': acc.get('CXP_Swat_Tier', '')
+                        'account_name': best['Account_Name'],
+                        'account_id': best['Account_ID'],
+                        'icp_score': best['ICP_score'],
+                        'tier': best.get('CXP_Swat_Tier', '')
                     })
-                    st.session_state.ae_books[current_ae].append(acc['Account_ID'])
-                    st.session_state.available_accounts = [
-                        a for a in st.session_state.available_accounts
-                        if a['Account_ID'] != acc['Account_ID']
-                    ]
+                    st.session_state.ae_books[current_ae].append(best['Account_ID'])
+                    st.session_state.available_accounts.pop(0)
                     st.session_state.current_pick += 1
-                    st.session_state.pick_start_time = None
                     st.rerun()
-
+        
         st.markdown("---")
-
-        # Quick action buttons
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if st.button("⚡ Auto-Draft Best"):
-                best = st.session_state.available_accounts[0]
-                st.session_state.draft_picks.append({
-                    'pick_number': current_pick + 1,
-                    'round': current_round,
-                    'ae': current_ae,
-                    'account_name': best['Account_Name'],
-                    'account_id': best['Account_ID'],
-                    'icp_score': best['ICP_score'],
-                    'tier': best.get('CXP_Swat_Tier', '')
-                })
-                st.session_state.ae_books[current_ae].append(best['Account_ID'])
-                st.session_state.available_accounts.pop(0)
-                st.session_state.current_pick += 1
-                st.session_state.pick_start_time = None
-                st.rerun()
         
-        with col2:
-            if current_pick > 0 and st.button("↩️ Undo"):
-                last = st.session_state.draft_picks.pop()
-                st.session_state.ae_books[last['ae']].remove(last['account_id'])
-                undo_acc = st.session_state.accounts_df[
-                    st.session_state.accounts_df['Account_ID'] == last['account_id']
-                ].iloc[0].to_dict()
-                st.session_state.available_accounts.insert(0, undo_acc)
-                st.session_state.available_accounts = sort_accounts_by_tier(st.session_state.available_accounts)
-                st.session_state.current_pick -= 1
-                st.session_state.pick_start_time = None
-                st.rerun()
-        
-        with col3:
+        # ACTION BUTTONS AT BOTTOM
+        col_done, col_complete = st.columns(2)
+        with col_done:
             if st.button("🏁 Done Picking", use_container_width=True):
                 st.session_state.stage = 'autocomplete'
                 st.rerun()
-
-        st.markdown("---")
-        st.subheader("📜 Recent Picks")
-        recent = st.session_state.draft_picks[-5:][::-1]
-        for pick in recent:
-            st.write(f"**Pick {pick['pick_number']}** — {pick['ae']} → {pick['account_name']} ({pick['icp_score']:.0f})")
-
-    else:
-        if len(st.session_state.available_accounts) == 0:
-            st.warning("No more accounts available!")
-        if current_pick >= total_picks:
-            st.success("All manual picks complete!")
         
-        if st.button("▶️ Done - Go to Results"):
+        with col_complete:
+            remaining = total_picks - current_pick
+            if st.button(f"🤖 Auto-Complete All {remaining}", type="primary", use_container_width=True):
+                with st.spinner(f"Auto-drafting {remaining} accounts..."):
+                    temp_pick = current_pick
+                    temp_available = st.session_state.available_accounts.copy()
+
+                    while temp_pick < total_picks and len(temp_available) > 0:
+                        round_num = (temp_pick // num_aes) + 1
+                        pick_in_round = temp_pick % num_aes
+
+                        if st.session_state.is_snake and round_num % 2 == 0:
+                            ae_idx = num_aes - 1 - pick_in_round
+                        else:
+                            ae_idx = pick_in_round
+
+                        ae = st.session_state.draft_order[ae_idx]
+                        best = temp_available[0]
+
+                        st.session_state.draft_picks.append({
+                            'pick_number': temp_pick + 1,
+                            'round': round_num,
+                            'ae': ae,
+                            'account_name': best['Account_Name'],
+                            'account_id': best['Account_ID'],
+                            'icp_score': best['ICP_score'],
+                            'tier': best.get('CXP_Swat_Tier', '')
+                        })
+                        st.session_state.ae_books[ae].append(best['Account_ID'])
+                        temp_available.pop(0)
+                        temp_pick += 1
+
+                    st.session_state.available_accounts = temp_available
+                    st.session_state.current_pick = temp_pick
+                    st.success(f"✅ Auto-drafted {temp_pick - current_pick} accounts!")
+                    
+                st.session_state.stage = 'results'
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # DRAFT PICKS STREAM - Show all picks organized by round
+        st.subheader("📜 Draft Picks Stream")
+        
+        if st.session_state.draft_picks:
+            # Group picks by round
+            picks_by_round = {}
+            for pick in st.session_state.draft_picks:
+                round_num = pick['round']
+                if round_num not in picks_by_round:
+                    picks_by_round[round_num] = []
+                picks_by_round[round_num].append(pick)
+            
+            # Display rounds in reverse order (most recent at top)
+            for round_num in sorted(picks_by_round.keys(), reverse=True):
+                round_picks = picks_by_round[round_num]
+                with st.expander(f"**Round {round_num}** — {len(round_picks)} picks", expanded=(round_num == current_round)):
+                    for pick in round_picks:
+                        badge = tier_badge(pick['tier'])
+                        st.write(
+                            f"**Pick {pick['pick_number']}** — {pick['ae']} | {badge} {pick['account_name']} ({pick['icp_score']:.0f})"
+                        )
+        else:
+            st.info("No picks yet - draft starting soon!")
+        
+        st.markdown("---")
+        if len(st.session_state.available_accounts) == 0:
+            st.warning("❌ No more accounts available!")
+        if current_pick >= total_picks:
+            st.success("✅ All manual picks complete!")
+        
+        if st.button("▶️ Go to Results"):
             st.session_state.stage = 'results'
             st.rerun()
 
 # =============================================================================
-# STAGE 4B: AUTO-COMPLETE
+# STAGE 4B: AUTO-COMPLETE (kept for flow, but can be skipped)
 # =============================================================================
 elif st.session_state.stage == 'autocomplete':
     st.header("🤖 Auto-Complete Remaining Picks")
@@ -553,11 +586,6 @@ elif st.session_state.stage == 'autocomplete':
     
     st.markdown("---")
     
-    st.subheader("Auto-draft summary:")
-    st.write(f"Will auto-draft the best available accounts (sorted by Tier + Score) until draft is complete or accounts run out.")
-    
-    st.markdown("---")
-
     if st.button("✅ Auto-Complete Draft", type="primary", use_container_width=True):
         with st.spinner(f"Auto-drafting {remaining} picks..."):
             temp_pick = current_pick
@@ -592,13 +620,11 @@ elif st.session_state.stage == 'autocomplete':
             st.session_state.current_pick = temp_pick
             st.success(f"✅ Auto-drafted {temp_pick - current_pick} picks!")
             
-            time.sleep(1)
-            st.session_state.stage = 'results'
-            st.rerun()
+        st.session_state.stage = 'results'
+        st.rerun()
     
     if st.button("⬅️ Back to Draft"):
         st.session_state.stage = 'draft'
-        st.session_state.pick_start_time = None
         st.rerun()
 
 # =============================================================================
